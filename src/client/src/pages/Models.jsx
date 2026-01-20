@@ -16,6 +16,13 @@ function Models() {
   useEffect(() => {
     loadModels();
     loadAvailableModels();
+    
+    // Auto-refresh every 3 seconds to show status updates
+    const interval = setInterval(() => {
+      loadModels();
+    }, 3000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const loadModels = async () => {
@@ -67,23 +74,28 @@ function Models() {
 
   const handleStartService = async (id) => {
     try {
+      setSuccess('Loading model... First-time download may take 2-5 minutes.');
       await modelsAPI.start(id);
-      setSuccess('Service started successfully');
+      setSuccess('Model loaded and running!');
       loadModels();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
+      loadModels(); // Refresh to show error status
+      setTimeout(() => setError(null), 5000);
     }
   };
 
   const handleStopService = async (id) => {
     try {
+      setSuccess('Unloading model...');
       await modelsAPI.stop(id);
-      setSuccess('Service stopped successfully');
+      setSuccess('Model stopped successfully');
       loadModels();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
+      setTimeout(() => setError(null), 5000);
     }
   };
 
@@ -114,10 +126,13 @@ function Models() {
     const badgeClass = {
       running: 'badge-success',
       stopped: 'badge-warning',
+      downloading: 'badge-info',
       error: 'badge-danger'
     }[status] || 'badge-info';
     
-    return <span className={`badge ${badgeClass}`}>{status}</span>;
+    const displayStatus = status === 'downloading' ? 'Downloading...' : status;
+    
+    return <span className={`badge ${badgeClass}`}>{displayStatus}</span>;
   };
 
   if (loading) return <div className="loading">Loading models...</div>;
@@ -162,38 +177,42 @@ function Models() {
                   <td>{getStatusBadge(model.status)}</td>
                   <td>{model.endpoint || '-'}</td>
                   <td>
-                    {model.status === 'stopped' ? (
+                    {model.status === 'stopped' || model.status === 'error' ? (
                       <button 
                         className="btn btn-success" 
                         onClick={() => handleStartService(model.id)}
+                        title="Load model (auto-downloads if needed)"
                       >
-                        Start
+                        Load Model
                       </button>
-                    ) : (
+                    ) : model.status === 'downloading' ? (
+                      <button 
+                        className="btn btn-info" 
+                        disabled
+                        title="Model is downloading..."
+                      >
+                        Downloading...
+                      </button>
+                    ) : model.status === 'running' ? (
                       <button 
                         className="btn btn-danger" 
                         onClick={() => handleStopService(model.id)}
+                        title="Unload model"
                       >
-                        Stop
+                        Unload
                       </button>
-                    )}
-                    {model.status === 'running' && (
-                      <button 
-                        className="btn btn-primary" 
-                        onClick={() => handleLoadModel(model.id)}
-                      >
-                        Load
-                      </button>
-                    )}
+                    ) : null}
                     <button 
                       className="btn btn-secondary" 
                       onClick={() => handleViewLogs(model)}
+                      title="View logs"
                     >
                       Logs
                     </button>
                     <button 
                       className="btn btn-danger" 
                       onClick={() => handleDeleteModel(model.id)}
+                      title="Delete model configuration"
                     >
                       Delete
                     </button>

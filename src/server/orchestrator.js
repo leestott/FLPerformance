@@ -1,307 +1,486 @@
-import { spawn, exec } from 'child_process';
-import { promisify } from 'util';
+import { FoundryLocalManager } from 'foundry-local-sdk';
 import OpenAI from 'openai';
 import logger, { createServiceLogger } from './logger.js';
 import storage from './storage.js';
 
-const execAsync = promisify(exec);
-
 class FoundryLocalOrchestrator {
   constructor() {
-    this.services = new Map(); // modelId -> { process, endpoint, client }
-    this.basePort = 5000;
-    this.portCounter = 0;
+    this.manager = null;
+    this.openaiClient = null;
+    this.loadedModels = new Map(); // modelId -> FoundryModelInfo
+    this.initialized = false;
   }
 
   /**
-   * Check if Foundry Local CLI is available
+   * Initialize and start Foundry Local service
    */
-  async checkFoundryLocal() {
+  async initialize() {
+    if (this.initialized && this.manager) {
+      logger.info('Orchestrator already initialized');
+      return {
+        endpoint: this.manager.endpoint,
+        serviceUrl: this.manager.serviceUrl
+      };
+    }
+
+    logger.info('Initializing Foundry Local SDK');
+    
     try {
-      // Note: Foundry Local may use different command names
-      // Try common variants: foundry-local, foundry, fl
-      const commands = ['foundry-local --version', 'foundry --version', 'fl --version'];
+      // Create manager instance
+      this.manager = new FoundryLocalManager();
       
-      for (const cmd of commands) {
-        try {
-          const { stdout } = await execAsync(cmd);
-          logger.info('Foundry Local detected', { version: stdout.trim() });
-          return true;
-        } catch (err) {
-          // Continue to next command
-        }
-      }
+      // Start the service (single service for all models)
+      await this.manager.startService();
       
-      throw new Error('Foundry Local not found in PATH');
+      logger.info('Foundry Local service started', {
+        endpoint: this.manager.endpoint,
+        serviceUrl: this.manager.serviceUrl
+      });
+
+      // Create OpenAI client (single client for all models)
+      this.openaiClient = new OpenAI({
+        baseURL: this.manager.endpoint,
+        apiKey: this.manager.apiKey
+      });
+
+      this.initialized = true;
+
+      return {
+        endpoint: this.manager.endpoint,
+        serviceUrl: this.manager.serviceUrl
+      };
+      
     } catch (error) {
-      logger.error('Foundry Local check failed', { error: error.message });
+      logger.error('Failed to initialize Foundry Local', { error: error.message });
+      this.initialized = false;
       throw error;
     }
   }
 
   /**
-   * List available models from Foundry Local catalog
+   * Check if service is running
+   */
+  async isServiceRunning() {
+    if (!this.manager) {
+      return false;
+    }
+    
+    try {
+      return await this.manager.isServiceRunning();
+    } catch (error) {
+      logger.error('Error checking service status', { error: error.message });
+      return false;
+    }
+  }
+
+  /**
+   * List available models from catalog
    */
   async listAvailableModels() {
+    await this.initialize();
+    
     try {
-      // Try to list models using CLI
-      const { stdout } = await execAsync('foundry-local models list --json');
-      const models = JSON.parse(stdout);
-      logger.info('Available models fetched', { count: models.length });
-      return models;
-    } catch (error) {
-      logger.warn('Could not fetch models from CLI, returning defaults', { error: error.message });
+      const models = await this.manager.listCatalogModels();
+      logger.info('Catalog models fetched', { count: models.length });
       
-      // Return common model aliases as fallback
+      // Transform to expected format
+      return models.map(m => ({
+        id: m.id,
+        alias: m.alias,
+        description: `${m.alias} (${m.deviceType})`,
+        version: m.version,
+        deviceType: m.deviceType,
+        executionProvider: m.executionProvider,
+        modelSize: m.modelSize
+      }));
+      
+    } catch (error) {
+      logger.error('Failed to list catalog models', { error: error.message });
+      
+      // Return fallback list
+      logger.warn('Returning fallback model list');
       return [
-        { id: 'phi-3-mini-4k-instruct', alias: 'phi-3-mini', description: 'Phi-3 Mini 4K Instruct' },
-        { id: 'phi-3-small-8k-instruct', alias: 'phi-3-small', description: 'Phi-3 Small 8K Instruct' },
-        { id: 'phi-3-medium-4k-instruct', alias: 'phi-3-medium', description: 'Phi-3 Medium 4K Instruct' },
-        { id: 'llama-3.2-1b-instruct', alias: 'llama-3.2-1b', description: 'Llama 3.2 1B Instruct' },
-        { id: 'llama-3.2-3b-instruct', alias: 'llama-3.2-3b', description: 'Llama 3.2 3B Instruct' }
+        { id: 'phi-3.5-mini', alias: 'phi-3.5-mini', description: 'Phi-3.5 Mini' },
+        { id: 'phi-4-mini', alias: 'phi-4-mini', description: 'Phi-4 Mini' },
+        { id: 'qwen2.5-0.5b', alias: 'qwen2.5-0.5b', description: 'Qwen 2.5 0.5B' },
+        { id: 'llama-3.2-1b', alias: 'llama-3.2-1b', description: 'Llama 3.2 1B' },
+        { id: 'llama-3.2-3b', alias: 'llama-3.2-3b', description: 'Llama 3.2 3B' }
       ];
     }
   }
 
   /**
-   * Start a Foundry Local service for a specific model
-   * NOTE: Foundry Local's architecture may limit simultaneous services
-   * This implementation attempts per-model services with dynamic port assignment
+   * List currently loaded models
    */
-  async startService(modelId, modelAlias) {
-    const serviceLogger = createServiceLogger(modelId);
+  async listLoadedModels() {
+    await this.initialize();
     
     try {
-      // Check if service already running
-      if (this.services.has(modelId)) {
-        const existing = this.services.get(modelId);
-        if (existing.process && !existing.process.killed) {
-          serviceLogger.info('Service already running');
-          return existing;
+      const models = await this.manager.listLoadedModels();
+      logger.info('Loaded models fetched', { count: models.length });
+      return models;
+    } catch (error) {
+      logger.error('Failed to list loaded models', { error: error.message });
+      // Return from cache
+      return Array.from(this.loadedModels.values());
+    }
+  }
+
+  /**
+   * Get model info by alias or ID
+   */
+  async getModelInfo(aliasOrId) {
+    await this.initialize();
+    
+    try {
+      const modelInfo = await this.manager.getModelInfo(aliasOrId);
+      if (!modelInfo) {
+        throw new Error(`Model ${aliasOrId} not found in catalog`);
+      }
+      return modelInfo;
+    } catch (error) {
+      logger.error('Failed to get model info', { aliasOrId, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Download a model (if not cached)
+   */
+  async downloadModel(alias, device = null, onProgress = null) {
+    await this.initialize();
+    
+    const serviceLogger = createServiceLogger(alias);
+    
+    try {
+      serviceLogger.info('Downloading model', { alias, device });
+      
+      // Download with progress callback
+      await this.manager.downloadModel(
+        alias,
+        device,
+        null, // token
+        false, // force
+        onProgress
+      );
+      
+      serviceLogger.info('Model downloaded', { alias });
+      return true;
+      
+    } catch (error) {
+      serviceLogger.error('Download failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Load a model into the service
+   * NOTE: This loads the model into the SINGLE Foundry Local service
+   */
+  async loadModel(modelId, alias, device = null, ttl = 600) {
+    await this.initialize();
+    
+    const serviceLogger = createServiceLogger(alias);
+    
+    try {
+      serviceLogger.info('Loading model', { modelId, alias, device, ttl });
+      
+      // Try to load model - if not downloaded, it will fail
+      try {
+        const modelInfo = await this.manager.loadModel(alias, device, ttl);
+        
+        // Store model info in cache (key by our model ID, not SDK's)
+        this.loadedModels.set(modelId, modelInfo);
+        
+        // Update existing model in storage with SDK details
+        const model = storage.getModel(modelId);
+        if (model) {
+          const updatedModel = {
+            ...model,
+            status: 'running',
+            endpoint: this.manager.endpoint,
+            foundry_id: modelInfo.id,
+            foundry_alias: modelInfo.alias,
+            version: modelInfo.version,
+            deviceType: modelInfo.deviceType,
+            executionProvider: modelInfo.executionProvider,
+            modelSize: modelInfo.modelSize,
+            last_error: null,
+            last_heartbeat: Date.now(),
+            updated_at: Date.now()
+          };
+          storage.saveModel(updatedModel);
+        }
+        
+        serviceLogger.info('Model loaded', {
+          id: modelId,
+          foundry_id: modelInfo.id,
+          alias: modelInfo.alias,
+          deviceType: modelInfo.deviceType,
+          executionProvider: modelInfo.executionProvider
+        });
+        
+        return modelInfo;
+        
+      } catch (loadError) {
+        // Check if error is about model not being downloaded
+        if (loadError.message && loadError.message.includes('not been downloaded')) {
+          serviceLogger.info('Model not downloaded, downloading now...', { alias });
+          
+          // Update status to downloading
+          const model = storage.getModel(modelId);
+          if (model) {
+            storage.saveModel({
+              ...model,
+              status: 'downloading',
+              last_error: null,
+              updated_at: Date.now()
+            });
+          }
+          
+          // Download the model first
+          await this.downloadModel(alias, device);
+          
+          serviceLogger.info('Download complete, loading model...', { alias });
+          
+          // Now try loading again
+          const modelInfo = await this.manager.loadModel(alias, device, ttl);
+          
+          // Store model info in cache
+          this.loadedModels.set(modelId, modelInfo);
+          
+          // Update existing model in storage with SDK details
+          if (model) {
+            const updatedModel = {
+              ...model,
+              status: 'running',
+              endpoint: this.manager.endpoint,
+              foundry_id: modelInfo.id,
+              foundry_alias: modelInfo.alias,
+              version: modelInfo.version,
+              deviceType: modelInfo.deviceType,
+              executionProvider: modelInfo.executionProvider,
+              modelSize: modelInfo.modelSize,
+              last_error: null,
+              last_heartbeat: Date.now(),
+              updated_at: Date.now()
+            };
+            storage.saveModel(updatedModel);
+          }
+          
+          serviceLogger.info('Model loaded after download', {
+            id: modelId,
+            foundry_id: modelInfo.id,
+            alias: modelInfo.alias
+          });
+          
+          return modelInfo;
+        } else {
+          // Different error, rethrow
+          throw loadError;
         }
       }
-
-      // Assign port for this service
-      const port = this.basePort + this.portCounter++;
-      const endpoint = `http://localhost:${port}`;
-
-      serviceLogger.info('Starting Foundry Local service', { port, modelAlias });
-
-      // Start service using CLI
-      // Command structure may vary based on actual Foundry Local CLI
-      // This is a placeholder - adjust based on actual Foundry Local documentation
-      const process = spawn('foundry-local', [
-        'serve',
-        '--model', modelAlias || modelId,
-        '--port', port.toString(),
-        '--api-key', 'local-key' // Placeholder for local auth
-      ]);
-
-      // Capture logs
-      process.stdout.on('data', (data) => {
-        serviceLogger.info('Service stdout', { data: data.toString().trim() });
-        storage.saveLog('service', modelId, 'info', data.toString().trim());
-      });
-
-      process.stderr.on('data', (data) => {
-        serviceLogger.error('Service stderr', { data: data.toString().trim() });
-        storage.saveLog('service', modelId, 'error', data.toString().trim());
-      });
-
-      process.on('error', (error) => {
-        serviceLogger.error('Service process error', { error: error.message });
-        storage.updateModelStatus(modelId, 'error', null, error.message);
-      });
-
-      process.on('exit', (code) => {
-        serviceLogger.info('Service exited', { code });
-        storage.updateModelStatus(modelId, 'stopped');
-        this.services.delete(modelId);
-      });
-
-      // Create OpenAI client for this endpoint
-      const client = new OpenAI({
-        baseURL: `${endpoint}/v1`,
-        apiKey: 'local-key' // Foundry Local may not require actual auth for local use
-      });
-
-      const serviceInfo = {
-        process,
-        endpoint,
-        port,
-        client,
-        modelId,
-        modelAlias
-      };
-
-      this.services.set(modelId, serviceInfo);
-
-      // Wait for service to be ready (with timeout)
-      await this.waitForService(endpoint, 30000);
-
-      // Update status
-      storage.updateModelStatus(modelId, 'running', endpoint);
-      serviceLogger.info('Service started successfully', { endpoint });
-
-      return serviceInfo;
-
+      
     } catch (error) {
-      serviceLogger.error('Failed to start service', { error: error.message });
-      storage.updateModelStatus(modelId, 'error', null, error.message);
+      serviceLogger.error('Load failed', { error: error.message });
+      
+      // Update model status to error
+      const model = storage.getModel(modelId);
+      if (model) {
+        storage.saveModel({
+          ...model,
+          status: 'error',
+          last_error: error.message,
+          updated_at: Date.now()
+        });
+      }
+      
       throw error;
     }
   }
 
   /**
-   * Wait for service to become ready
+   * Unload a model from the service
    */
-  async waitForService(endpoint, timeout = 30000) {
-    const startTime = Date.now();
-    const client = new OpenAI({
-      baseURL: `${endpoint}/v1`,
-      apiKey: 'local-key'
-    });
-
-    while (Date.now() - startTime < timeout) {
-      try {
-        // Try to list models as health check
-        await client.models.list();
-        logger.info('Service is ready', { endpoint });
-        return true;
-      } catch (error) {
-        // Service not ready yet, wait and retry
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-
-    throw new Error(`Service did not become ready within ${timeout}ms`);
-  }
-
-  /**
-   * Load/download model (Foundry Local handles this automatically on first use)
-   */
-  async loadModel(modelId) {
-    const serviceLogger = createServiceLogger(modelId);
+  async unloadModel(modelId, alias, device = null, force = false) {
+    await this.initialize();
+    
+    const serviceLogger = createServiceLogger(alias);
     
     try {
-      serviceLogger.info('Loading model (Foundry Local handles download/cache)');
+      serviceLogger.info('Unloading model', { modelId, alias, device, force });
       
-      // Foundry Local automatically downloads and caches models on first inference
-      // We can verify by making a test inference request
-      const service = this.services.get(modelId);
-      if (!service) {
-        throw new Error('Service not started for this model');
+      // Get model info to find foundry alias
+      const modelInfo = this.loadedModels.get(modelId);
+      const foundryAlias = modelInfo?.alias || alias;
+      
+      // Unload using SDK
+      await this.manager.unloadModel(foundryAlias, device, force);
+      
+      // Remove from cache
+      this.loadedModels.delete(modelId);
+      
+      // Update model status
+      const model = storage.getModel(modelId);
+      if (model) {
+        storage.saveModel({
+          ...model,
+          status: 'stopped',
+          endpoint: null,
+          last_heartbeat: Date.now(),
+          updated_at: Date.now()
+        });
       }
-
-      // Test inference to trigger download if needed
-      const response = await service.client.chat.completions.create({
-        model: service.modelAlias || modelId,
-        messages: [{ role: 'user', content: 'Hello' }],
-        max_tokens: 10
-      });
-
-      serviceLogger.info('Model loaded successfully', { 
-        modelId,
-        testResponse: response.choices[0]?.message?.content 
-      });
       
-      storage.updateModelStatus(modelId, 'running', service.endpoint);
-      return true;
-
+      serviceLogger.info('Model unloaded', { modelId, alias });
+      
     } catch (error) {
-      serviceLogger.error('Failed to load model', { error: error.message });
-      storage.updateModelStatus(modelId, 'error', null, error.message);
+      serviceLogger.error('Unload failed', { error: error.message });
       throw error;
     }
   }
 
   /**
-   * Stop a service
+   * Check service health for a specific model
    */
-  async stopService(modelId) {
-    const serviceLogger = createServiceLogger(modelId);
+  async checkModelHealth(aliasOrId) {
+    await this.initialize();
     
     try {
-      const service = this.services.get(modelId);
-      if (!service || !service.process) {
-        serviceLogger.warn('No service to stop');
-        return;
+      // Check if model is in loaded models
+      const loadedModels = await this.listLoadedModels();
+      const isLoaded = loadedModels.some(m => 
+        m.alias === aliasOrId || m.id === aliasOrId
+      );
+      
+      if (!isLoaded) {
+        return {
+          status: 'stopped',
+          healthy: false,
+          endpoint: this.manager.endpoint
+        };
       }
-
-      serviceLogger.info('Stopping service');
       
-      // Kill the process
-      service.process.kill('SIGTERM');
-      
-      // Wait a bit for graceful shutdown
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Force kill if still running
-      if (!service.process.killed) {
-        service.process.kill('SIGKILL');
-      }
-
-      this.services.delete(modelId);
-      storage.updateModelStatus(modelId, 'stopped');
-      
-      serviceLogger.info('Service stopped');
-
-    } catch (error) {
-      serviceLogger.error('Failed to stop service', { error: error.message });
-      throw error;
-    }
-  }
-
-  /**
-   * Get service info
-   */
-  getService(modelId) {
-    return this.services.get(modelId);
-  }
-
-  /**
-   * Check service health
-   */
-  async checkServiceHealth(modelId) {
-    try {
-      const service = this.services.get(modelId);
-      if (!service || !service.client) {
-        return { status: 'stopped', healthy: false };
-      }
-
-      // Try a health check request
-      await service.client.models.list();
-      
-      storage.updateModelStatus(modelId, 'running', service.endpoint);
-      
-      return { 
-        status: 'running', 
+      // Service is running and model is loaded
+      return {
+        status: 'running',
         healthy: true,
-        endpoint: service.endpoint,
+        endpoint: this.manager.endpoint,
         lastCheck: Date.now()
       };
-
+      
     } catch (error) {
-      storage.updateModelStatus(modelId, 'error', null, error.message);
-      return { 
-        status: 'error', 
+      return {
+        status: 'error',
         healthy: false,
-        error: error.message 
+        error: error.message
       };
     }
   }
 
   /**
-   * Stop all services (cleanup)
+   * Check overall service health
    */
-  async stopAllServices() {
-    const promises = Array.from(this.services.keys()).map(modelId => 
-      this.stopService(modelId).catch(err => 
-        logger.error('Error stopping service', { modelId, error: err.message })
-      )
-    );
-    await Promise.all(promises);
-    logger.info('All services stopped');
+  async checkServiceHealth() {
+    if (!this.initialized || !this.manager) {
+      return { status: 'not_initialized', healthy: false };
+    }
+    
+    try {
+      const isRunning = await this.manager.isServiceRunning();
+      
+      if (!isRunning) {
+        return { status: 'stopped', healthy: false };
+      }
+      
+      // Try a test request
+      try {
+        await this.openaiClient.models.list();
+      } catch (err) {
+        return {
+          status: 'error',
+          healthy: false,
+          error: 'Service running but not responding'
+        };
+      }
+      
+      return {
+        status: 'running',
+        healthy: true,
+        endpoint: this.manager.endpoint,
+        lastCheck: Date.now()
+      };
+      
+    } catch (error) {
+      return {
+        status: 'error',
+        healthy: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get OpenAI client for inference
+   * NOTE: Single client is used for all models, differentiated by model ID
+   */
+  getOpenAIClient() {
+    if (!this.openaiClient) {
+      throw new Error('Orchestrator not initialized. Call initialize() first.');
+    }
+    return this.openaiClient;
+  }
+
+  /**
+   * Get endpoint
+   */
+  getEndpoint() {
+    return this.manager?.endpoint || null;
+  }
+
+  /**
+   * Get loaded model info from cache
+   */
+  getLoadedModelInfo(modelId) {
+    return this.loadedModels.get(modelId) || null;
+  }
+
+  /**
+   * Get all loaded models from cache
+   */
+  getAllLoadedModels() {
+    return Array.from(this.loadedModels.values());
+  }
+
+  /**
+   * Cleanup - unload all models
+   */
+  async cleanup() {
+    if (!this.initialized || !this.manager) {
+      logger.info('Nothing to cleanup');
+      return;
+    }
+    
+    try {
+      logger.info('Cleaning up - unloading all models');
+      
+      const loaded = await this.listLoadedModels();
+      
+      for (const model of loaded) {
+        try {
+          await this.unloadModel(model.alias || model.id, null, true);
+          logger.info('Unloaded model', { id: model.id });
+        } catch (error) {
+          logger.error('Error unloading model', { id: model.id, error: error.message });
+        }
+      }
+      
+      this.loadedModels.clear();
+      logger.info('Cleanup complete');
+      
+    } catch (error) {
+      logger.error('Cleanup error', { error: error.message });
+    }
   }
 }
 

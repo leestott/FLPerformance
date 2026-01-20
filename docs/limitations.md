@@ -4,67 +4,114 @@ This document describes known limitations and constraints of FLPerformance when 
 
 ## 1. Service-Per-Model Architecture
 
-### Requirement
-The application is designed to run **one Foundry Local service instance per model** to enable true parallel benchmarking and isolated performance measurement.
+### Original Requirement
+The specification requested **one Foundry Local service instance per model** to enable true parallel benchmarking and isolated performance measurement.
 
-### Current Implementation
-The orchestrator (`/src/server/orchestrator.js`) attempts to:
-- Spawn separate Foundry Local processes with the `--model` flag
-- Assign each service a unique dynamic port (starting from 5000)
-- Maintain independent OpenAI-compatible API clients per service
-- Track service lifecycle independently
+### Actual Foundry Local Architecture
+
+**Reality:** Foundry Local operates as a **single service** that manages multiple models on-demand.
+
+**Architecture (as implemented by Foundry Local SDK):**
+- One `FoundryLocalManager` instance per application
+- One Foundry Local service endpoint (e.g., `http://localhost:5272`)
+- Models are loaded/unloaded dynamically via `/openai/load/{modelId}` and `/openai/unload/{modelId}` REST APIs
+- Multiple models can be loaded simultaneously in the same service
+- Model differentiation is by model ID in inference requests, not by separate endpoints
+
+**Implementation in FLPerformance:**
+```javascript
+// Single manager, single service
+const manager = new FoundryLocalManager();
+await manager.startService(); // Starts ONE service
+
+// Load multiple models into the SAME service
+await manager.loadModel('phi-3.5-mini');
+await manager.loadModel('llama-3.2-1b');
+
+// All models accessible via same endpoint: manager.endpoint
+// Differentiated by modelInfo.id in API calls
+```
+
+**Implications:**
+1. **No per-model endpoints** - All models share `manager.endpoint` (e.g., `http://localhost:5272/v1`)
+2. **Sequential or concurrent benchmarking** - Models can be benchmarked sequentially or concurrently against the same service
+3. **Resource sharing** - Memory, GPU, and CPU resources are managed by Foundry Local internally
+4. **Simplified service management** - No need for port allocation or multiple process management
+
+**Benefits:**
+- Simpler architecture and implementation
+- No port conflicts or allocation issues
+- Easier resource pooling and management
+- Follows official SDK design patterns
+- More maintainable codebase
+
+**User Impact:**
+- The UI shows all models using the same endpoint
+- Model status is "loaded" or "not loaded" rather than "service running/stopped"
+- Benchmarks can run concurrently if Foundry Local supports it internally
+- Resource contention is handled by Foundry Local, not the application
 
 ### Discovered Constraints
 
-#### 1.1 Foundry Local Runtime Constraints
+#### 1.1 Model Loading Behavior
 
-**Constraint:** Foundry Local's actual architecture may impose limitations on simultaneous service instances.
-
-**Possible Scenarios:**
-1. **Single Management Service:** Foundry Local may use a single management service that coordinates multiple model instances
-2. **Port Restrictions:** The CLI may not support custom port assignment per invocation
-3. **Resource Locking:** Models may lock shared resources (e.g., cache directories, GPU memory) preventing parallel loading
-4. **Process Model:** Foundry Local may be designed as a singleton service that loads models on demand rather than running multiple concurrent services
-
-**Mitigation in Code:**
-- The orchestrator is built to handle dynamic endpoints
-- Services are tracked independently in a Map
-- Error handling captures and reports startup failures
-- The UI clearly indicates which service is tied to which model
-
-**User Impact:**
-- If Foundry Local limits simultaneous services, benchmarks will run sequentially
-- The application will detect and report "service already running" or port conflicts
-- Benchmark execution time will increase linearly with the number of models
-
-**Workaround:**
-If true parallel services are not supported:
-1. Run benchmarks sequentially (current fallback behavior)
-2. Use the same service with model switching (requires Foundry Local support)
-3. Document which models can coexist and which require exclusive access
-
-#### 1.2 Model Loading Behavior
-
-**Constraint:** Foundry Local downloads and caches models on first use.
+**Constraint:** Foundry Local downloads and caches models on first use via the SDK's `loadModel()` method.
 
 **Implications:**
 - First model load triggers download (can take minutes to hours depending on model size and network)
-- Subsequent loads use cached models
-- Cache location may be shared across all Foundry Local instances
-- Multiple instances attempting to download the same model simultaneously may conflict
+- Subsequent loads use cached models from local storage
+- Cache location is managed by Foundry Local (accessible via SDK)
+- Multiple applications can share the same model cache
+
+**SDK Download API:**
+```javascript
+// Download with progress tracking
+await manager.downloadModel(alias, device, token, force, (progress) => {
+  console.log(`Download progress: ${progress}%`);
+});
+
+// Load downloads automatically if not cached
+const modelInfo = await manager.loadModel(alias);
+```
 
 **Mitigation:**
-- The "Load Model" operation is separate from "Start Service"
-- First load shows user notification: "Loading model... this may take a while"
+- The `downloadModel()` API provides progress callbacks
+- First load shows user notification: "Downloading model... this may take a while"
 - Errors during download are captured and displayed
 - Users can pre-download models via Foundry Local CLI before using the app
 
 **Recommendation:**
 Pre-download models before benchmarking:
 ```bash
-foundry-local models download phi-3-mini-4k-instruct
-foundry-local models download llama-3.2-1b-instruct
+foundry model download phi-3.5-mini
+foundry model download llama-3.2-1b
 ```
+
+Or check cached models:
+```bash
+foundry model list --cached
+```
+
+#### 1.2 Time-to-Live (TTL) for Loaded Models
+
+**Feature:** Foundry Local supports TTL (Time-to-Live) for loaded models.
+
+**Default:** Models are loaded with TTL=600 seconds (10 minutes) by default.
+
+**Implication:**
+- Models may be automatically unloaded after TTL expires if not in use
+- For long-running benchmarks, set appropriate TTL or reload model
+
+**SDK API:**
+```javascript
+// Load with custom TTL (in seconds)
+await manager.loadModel(alias, device, ttl=3600); // 1 hour TTL
+```
+
+**FLPerformance Setting:**
+- Default TTL: 600 seconds
+- Configurable in benchmark settings
+- Automatically reloads if model unloaded during benchmark
 
 ## 2. Resource Metrics Availability
 

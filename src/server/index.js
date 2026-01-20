@@ -43,6 +43,20 @@ app.get('/api/models/available', async (req, res) => {
 });
 
 /**
+ * GET /api/models/loaded
+ * List currently loaded models in Foundry Local service
+ */
+app.get('/api/models/loaded', async (req, res) => {
+  try {
+    const models = await orchestrator.listLoadedModels();
+    res.json({ models });
+  } catch (error) {
+    logger.error('Failed to list loaded models', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/models
  * List all configured models
  */
@@ -113,7 +127,7 @@ app.delete('/api/models/:id', async (req, res) => {
 
 /**
  * POST /api/models/:id/start
- * Start service for a model
+ * Load model into Foundry Local service (downloads and loads)
  */
 app.post('/api/models/:id/start', async (req, res) => {
   try {
@@ -124,48 +138,78 @@ app.post('/api/models/:id/start', async (req, res) => {
       return res.status(404).json({ error: 'Model not found' });
     }
 
-    const service = await orchestrator.startService(id, model.alias);
-    logger.info('Service started', { id, endpoint: service.endpoint });
+    // Load model (will initialize service if needed)
+    const modelInfo = await orchestrator.loadModel(id, model.alias || model.model_id);
+    
+    logger.info('Model loaded', { id, modelInfo });
     
     res.json({ 
       success: true,
-      endpoint: service.endpoint,
-      port: service.port
+      modelInfo: {
+        id: modelInfo.id,
+        alias: modelInfo.alias,
+        deviceType: modelInfo.deviceType,
+        executionProvider: modelInfo.executionProvider
+      },
+      endpoint: orchestrator.manager.endpoint
     });
   } catch (error) {
-    logger.error('Failed to start service', { error: error.message });
+    logger.error('Failed to load model', { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
  * POST /api/models/:id/stop
- * Stop service for a model
+ * Unload model from Foundry Local service
  */
 app.post('/api/models/:id/stop', async (req, res) => {
   try {
     const { id } = req.params;
-    await orchestrator.stopService(id);
-    logger.info('Service stopped', { id });
+    const model = storage.getModel(id);
+    
+    if (!model) {
+      return res.status(404).json({ error: 'Model not found' });
+    }
+    
+    await orchestrator.unloadModel(id, model.alias || model.model_id);
+    logger.info('Model unloaded', { id });
     
     res.json({ success: true });
   } catch (error) {
-    logger.error('Failed to stop service', { error: error.message });
+    logger.error('Failed to unload model', { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
  * POST /api/models/:id/load
- * Load model (download if needed)
+ * Load model into Foundry Local service (download if needed) - same as /start
  */
 app.post('/api/models/:id/load', async (req, res) => {
   try {
     const { id } = req.params;
-    await orchestrator.loadModel(id);
-    logger.info('Model loaded', { id });
+    const model = storage.getModel(id);
     
-    res.json({ success: true });
+    if (!model) {
+      return res.status(404).json({ error: 'Model not found' });
+    }
+    
+    // Load model using SDK (downloads if needed)
+    const modelInfo = await orchestrator.loadModel(id, model.model_id || model.alias);
+    
+    logger.info('Model loaded', { id, modelInfo });
+    
+    res.json({ 
+      success: true,
+      modelInfo: {
+        id: modelInfo.id,
+        alias: modelInfo.alias,
+        deviceType: modelInfo.deviceType,
+        executionProvider: modelInfo.executionProvider
+      },
+      endpoint: orchestrator.manager.endpoint
+    });
   } catch (error) {
     logger.error('Failed to load model', { error: error.message });
     res.status(500).json({ error: error.message });
@@ -174,12 +218,18 @@ app.post('/api/models/:id/load', async (req, res) => {
 
 /**
  * GET /api/models/:id/health
- * Check service health
+ * Check model health (whether loaded in service)
  */
 app.get('/api/models/:id/health', async (req, res) => {
   try {
     const { id } = req.params;
-    const health = await orchestrator.checkServiceHealth(id);
+    const model = storage.getModel(id);
+    
+    if (!model) {
+      return res.status(404).json({ error: 'Model not found' });
+    }
+    
+    const health = await orchestrator.checkModelHealth(model.alias || id);
     res.json(health);
   } catch (error) {
     logger.error('Health check failed', { error: error.message });
@@ -237,7 +287,7 @@ app.get('/api/benchmarks/suites', async (req, res) => {
  */
 app.post('/api/benchmarks/run', async (req, res) => {
   try {
-    const { modelIds, suiteName, config } = req.body;
+    const { modelIds, suiteName, selectedScenarios, config } = req.body;
     
     if (!modelIds || !Array.isArray(modelIds) || modelIds.length === 0) {
       return res.status(400).json({ error: 'modelIds array is required' });
@@ -255,6 +305,15 @@ app.post('/api/benchmarks/run', async (req, res) => {
     
     const suite = JSON.parse(fs.readFileSync(suitePath, 'utf8'));
 
+    // Filter scenarios if selectedScenarios is provided
+    if (selectedScenarios && Array.isArray(selectedScenarios) && selectedScenarios.length > 0) {
+      suite.scenarios = suite.scenarios.filter(s => selectedScenarios.includes(s.name));
+      logger.info('Running selected scenarios', { 
+        total: selectedScenarios.length,
+        scenarios: selectedScenarios 
+      });
+    }
+
     // Start benchmark (async)
     benchmark.runBenchmark(modelIds, suiteName, suite, config || {}, (progress) => {
       // Progress callback - could emit via WebSocket for real-time updates
@@ -265,7 +324,7 @@ app.post('/api/benchmarks/run', async (req, res) => {
 
     res.json({ 
       success: true,
-      message: 'Benchmark started'
+      message: `Benchmark started with ${suite.scenarios.length} scenario(s)`
     });
   } catch (error) {
     logger.error('Failed to start benchmark', { error: error.message });
@@ -301,7 +360,18 @@ app.get('/api/benchmarks/runs/:id', async (req, res) => {
     }
     
     const results = storage.getBenchmarkResults(id);
-    res.json({ run, results });
+    
+    // Enrich results with model alias
+    const enrichedResults = results.map(result => {
+      const model = storage.getModel(result.model_id);
+      return {
+        ...result,
+        model_alias: model?.alias || result.model_id,
+        model_name: model?.alias || 'Unknown Model'
+      };
+    });
+    
+    res.json({ run, results: enrichedResults });
   } catch (error) {
     logger.error('Failed to get benchmark run', { error: error.message });
     res.status(500).json({ error: error.message });
@@ -396,10 +466,11 @@ app.get('/api/benchmarks/runs/:id/logs', async (req, res) => {
  */
 app.get('/api/system/health', async (req, res) => {
   try {
-    await orchestrator.checkFoundryLocal();
+    const serviceHealth = await orchestrator.checkServiceHealth();
     res.json({ 
-      status: 'healthy',
-      foundryLocal: 'available',
+      status: serviceHealth.healthy ? 'healthy' : 'unhealthy',
+      foundryLocal: serviceHealth.healthy ? 'available' : 'unavailable',
+      endpoint: serviceHealth.endpoint,
       timestamp: Date.now()
     });
   } catch (error) {
@@ -466,18 +537,18 @@ app.use((err, req, res, next) => {
 // Start server
 const server = app.listen(PORT, () => {
   logger.info(`FLPerformance API server running on port ${PORT}`);
-  logger.info('Checking Foundry Local availability...');
+  logger.info('Initializing Foundry Local...');
   
-  orchestrator.checkFoundryLocal()
-    .then(() => logger.info('Foundry Local is available'))
-    .catch(err => logger.error('Foundry Local check failed', { error: err.message }));
+  orchestrator.initialize()
+    .then((info) => logger.info('Foundry Local initialized', info))
+    .catch(err => logger.error('Foundry Local initialization failed', { error: err.message }));
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
   server.close();
-  await orchestrator.stopAllServices();
+  await orchestrator.cleanup();
   storage.close();
   process.exit(0);
 });
@@ -485,7 +556,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
   server.close();
-  await orchestrator.stopAllServices();
+  await orchestrator.cleanup();
   storage.close();
   process.exit(0);
 });

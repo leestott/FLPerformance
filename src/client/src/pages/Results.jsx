@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { benchmarksAPI } from '../utils/api';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 
 function Results() {
   const [runs, setRuns] = useState([]);
@@ -68,9 +68,11 @@ function Results() {
     const modelMap = {};
     
     results.forEach(result => {
-      if (!modelMap[result.model_id]) {
-        modelMap[result.model_id] = {
+      const modelKey = result.model_alias || result.model_id;
+      if (!modelMap[modelKey]) {
+        modelMap[modelKey] = {
           model_id: result.model_id,
+          model: modelKey,
           tps: [],
           latency_p50: [],
           latency_p95: [],
@@ -80,16 +82,16 @@ function Results() {
         };
       }
       
-      if (result.tps) modelMap[result.model_id].tps.push(result.tps);
-      if (result.latency_p50) modelMap[result.model_id].latency_p50.push(result.latency_p50);
-      if (result.latency_p95) modelMap[result.model_id].latency_p95.push(result.latency_p95);
-      if (result.latency_p99) modelMap[result.model_id].latency_p99.push(result.latency_p99);
-      if (result.error_rate !== null) modelMap[result.model_id].error_rate.push(result.error_rate);
-      modelMap[result.model_id].scenarios++;
+      if (result.tps) modelMap[modelKey].tps.push(result.tps);
+      if (result.latency_p50) modelMap[modelKey].latency_p50.push(result.latency_p50);
+      if (result.latency_p95) modelMap[modelKey].latency_p95.push(result.latency_p95);
+      if (result.latency_p99) modelMap[modelKey].latency_p99.push(result.latency_p99);
+      if (result.error_rate !== null) modelMap[modelKey].error_rate.push(result.error_rate);
+      modelMap[modelKey].scenarios++;
     });
 
     return Object.values(modelMap).map(m => ({
-      model: m.model_id,
+      model: m.model, // Use alias instead of model_id
       avgTps: m.tps.length ? (m.tps.reduce((a, b) => a + b, 0) / m.tps.length).toFixed(2) : 0,
       avgP50: m.latency_p50.length ? (m.latency_p50.reduce((a, b) => a + b, 0) / m.latency_p50.length).toFixed(0) : 0,
       avgP95: m.latency_p95.length ? (m.latency_p95.reduce((a, b) => a + b, 0) / m.latency_p95.length).toFixed(0) : 0,
@@ -100,6 +102,26 @@ function Results() {
   };
 
   const modelAggregates = results.length > 0 ? getModelAggregates() : [];
+
+  // Get performance rating (0-100 scale)
+  const getPerformanceScore = (model) => {
+    // Higher TPS is better, lower latency is better, lower error rate is better
+    const tpsScore = Math.min((parseFloat(model.avgTps) / 100) * 30, 30); // Max 30 points
+    const latencyScore = Math.max(0, 40 - (parseFloat(model.avgP95) / 100)); // Max 40 points (lower is better)
+    const errorScore = Math.max(0, 30 - (parseFloat(model.avgErrorRate) * 10)); // Max 30 points
+    return Math.min(100, tpsScore + latencyScore + errorScore).toFixed(0);
+  };
+
+  // Get color for performance score
+  const getScoreColor = (score) => {
+    if (score >= 80) return '#27ae60';
+    if (score >= 60) return '#3498db';
+    if (score >= 40) return '#f39c12';
+    return '#e74c3c';
+  };
+
+  // Colors for charts
+  const COLORS = ['#3498db', '#e74c3c', '#27ae60', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22'];
 
   if (loading) return <div className="loading">Loading results...</div>;
 
@@ -143,14 +165,135 @@ function Results() {
             </div>
           </div>
 
+          {results.length === 0 && selectedRun && (
+            <div className="card">
+              <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>⚠️</div>
+                <h3 style={{ marginBottom: '1rem', color: '#e67e22' }}>Benchmark Run Failed</h3>
+                <p style={{ color: '#95a5a6', marginBottom: '1.5rem' }}>
+                  This benchmark run completed but didn't generate any results.
+                  <br />
+                  The models likely failed health checks or weren't responding to inference requests.
+                </p>
+                <div style={{ padding: '1.5rem', background: '#fff3cd', borderRadius: '8px', border: '2px solid #ffc107', marginBottom: '1.5rem', maxWidth: '600px', margin: '0 auto 1.5rem' }}>
+                  <h4 style={{ marginBottom: '1rem', color: '#856404' }}>🔧 Recent Fixes Applied:</h4>
+                  <p style={{ textAlign: 'left', color: '#856404', marginBottom: '1rem' }}>
+                    The benchmark system has been updated to fix model identification issues. 
+                    <strong> Please restart the backend server</strong> and try again!
+                  </p>
+                  <h4 style={{ marginBottom: '0.5rem', color: '#856404' }}>✅ To run a successful benchmark:</h4>
+                  <ol style={{ textAlign: 'left', color: '#856404', paddingLeft: '1.5rem' }}>
+                    <li><strong>Restart backend</strong>: Press Ctrl+C in backend terminal, run <code>npm run server</code></li>
+                    <li>Go to <strong>Models</strong> page - ensure models show status: <strong>"running"</strong> (green)</li>
+                    <li>Go to <strong>Benchmarks</strong> page</li>
+                    <li>Select your <strong>running models</strong> (check boxes)</li>
+                    <li>Click <strong>"Run Benchmark"</strong></li>
+                    <li>Wait 1-2 minutes for completion</li>
+                    <li>Return here to see visualizations! 📊</li>
+                  </ol>
+                </div>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                  <button className="btn btn-primary" onClick={() => window.location.href = '/#/models'}>
+                    Go to Models
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => window.location.href = '/#/benchmarks'}>
+                    Go to Benchmarks
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {results.length > 0 && (
             <>
+              {/* Performance Score Cards */}
               <div className="card">
-                <div className="card-header">Model Comparison</div>
+                <div className="card-header">📊 Performance Scores</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', padding: '1rem' }}>
+                  {modelAggregates.map((model, idx) => {
+                    const score = getPerformanceScore(model);
+                    const color = getScoreColor(score);
+                    return (
+                      <div key={idx} style={{ 
+                        padding: '1.5rem', 
+                        background: 'white', 
+                        borderRadius: '8px', 
+                        border: `3px solid ${color}`,
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '3rem', fontWeight: 'bold', color, marginBottom: '0.5rem' }}>
+                          {score}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: '#7f8c8d', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                          Overall Score
+                        </div>
+                        <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#2c3e50', marginBottom: '0.5rem' }}>
+                          {model.model}
+                        </div>
+                        <div style={{ height: '6px', background: '#ecf0f1', borderRadius: '3px', overflow: 'hidden', marginTop: '0.5rem' }}>
+                          <div style={{ height: '100%', width: `${score}%`, background: color, transition: 'width 0.3s' }}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Best Model Cards */}
+              <div className="card">
+                <div className="card-header">🏆 Best Model For...</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
+                  <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)', borderRadius: '8px', color: 'white', boxShadow: '0 4px 12px rgba(39, 174, 96, 0.3)' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🚀</div>
+                    <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem', opacity: 0.9 }}>Highest Throughput</h4>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                      {[...modelAggregates].sort((a, b) => b.avgTps - a.avgTps)[0]?.avgTps} tps
+                    </p>
+                    <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>
+                      {[...modelAggregates].sort((a, b) => b.avgTps - a.avgTps)[0]?.model}
+                    </p>
+                  </div>
+                  <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #3498db 0%, #5dade2 100%)', borderRadius: '8px', color: 'white', boxShadow: '0 4px 12px rgba(52, 152, 219, 0.3)' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚡</div>
+                    <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem', opacity: 0.9 }}>Lowest Latency (P95)</h4>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                      {[...modelAggregates].sort((a, b) => a.avgP95 - b.avgP95)[0]?.avgP95} ms
+                    </p>
+                    <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>
+                      {[...modelAggregates].sort((a, b) => a.avgP95 - b.avgP95)[0]?.model}
+                    </p>
+                  </div>
+                  <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #9b59b6 0%, #bb8fce 100%)', borderRadius: '8px', color: 'white', boxShadow: '0 4px 12px rgba(155, 89, 182, 0.3)' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✅</div>
+                    <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem', opacity: 0.9 }}>Most Reliable</h4>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                      {[...modelAggregates].sort((a, b) => a.avgErrorRate - b.avgErrorRate)[0]?.avgErrorRate}% error
+                    </p>
+                    <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>
+                      {[...modelAggregates].sort((a, b) => a.avgErrorRate - b.avgErrorRate)[0]?.model}
+                    </p>
+                  </div>
+                  <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #e67e22 0%, #f39c12 100%)', borderRadius: '8px', color: 'white', boxShadow: '0 4px 12px rgba(230, 126, 34, 0.3)' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏱️</div>
+                    <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem', opacity: 0.9 }}>Fastest First Token</h4>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                      {[...modelAggregates].sort((a, b) => a.avgP50 - b.avgP50)[0]?.avgP50} ms
+                    </p>
+                    <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>
+                      {[...modelAggregates].sort((a, b) => a.avgP50 - b.avgP50)[0]?.model}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header">📈 Model Comparison</div>
                 <table className="table">
                   <thead>
                     <tr>
                       <th>Model</th>
+                      <th>Score</th>
                       <th>Avg TPS</th>
                       <th>Avg P50 Latency</th>
                       <th>Avg P95 Latency</th>
@@ -160,90 +303,113 @@ function Results() {
                     </tr>
                   </thead>
                   <tbody>
-                    {modelAggregates.map((model, idx) => (
-                      <tr key={idx}>
-                        <td><strong>{model.model}</strong></td>
-                        <td>{model.avgTps} tokens/s</td>
-                        <td>{model.avgP50} ms</td>
-                        <td>{model.avgP95} ms</td>
-                        <td>{model.avgP99} ms</td>
-                        <td>{model.avgErrorRate}%</td>
-                        <td>{model.scenarios}</td>
-                      </tr>
-                    ))}
+                    {modelAggregates.map((model, idx) => {
+                      const score = getPerformanceScore(model);
+                      const color = getScoreColor(score);
+                      return (
+                        <tr key={idx}>
+                          <td><strong>{model.model}</strong></td>
+                          <td>
+                            <span style={{ 
+                              display: 'inline-block',
+                              padding: '4px 12px',
+                              borderRadius: '12px',
+                              background: color,
+                              color: 'white',
+                              fontWeight: 'bold',
+                              fontSize: '0.9rem'
+                            }}>
+                              {score}/100
+                            </span>
+                          </td>
+                          <td>
+                            <span style={{ fontWeight: 'bold', color: '#27ae60' }}>{model.avgTps}</span> tokens/s
+                          </td>
+                          <td>{model.avgP50} ms</td>
+                          <td>{model.avgP95} ms</td>
+                          <td>{model.avgP99} ms</td>
+                          <td>
+                            <span style={{ 
+                              color: parseFloat(model.avgErrorRate) > 5 ? '#e74c3c' : '#27ae60',
+                              fontWeight: 'bold'
+                            }}>
+                              {model.avgErrorRate}%
+                            </span>
+                          </td>
+                          <td>{model.scenarios}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
 
               {modelAggregates.length > 0 && (
                 <>
-                  <div className="card">
-                    <div className="card-header">Throughput Comparison (TPS)</div>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={modelAggregates}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="model" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="avgTps" fill="#3498db" name="Avg TPS" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1rem' }}>
+                    <div className="card">
+                      <div className="card-header">🚀 Throughput Comparison (TPS)</div>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={modelAggregates}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="model" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="avgTps" fill="#27ae60" name="Avg TPS" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="card">
+                      <div className="card-header">⚡ Latency Comparison (ms)</div>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={modelAggregates}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="model" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="avgP50" fill="#3498db" name="P50" />
+                          <Bar dataKey="avgP95" fill="#e67e22" name="P95" />
+                          <Bar dataKey="avgP99" fill="#e74c3c" name="P99" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
 
                   <div className="card">
-                    <div className="card-header">Latency Comparison (ms)</div>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={modelAggregates}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="model" />
-                        <YAxis />
-                        <Tooltip />
+                    <div className="card-header">🎯 Performance Radar Chart</div>
+                    <ResponsiveContainer width="100%" height={400}>
+                      <RadarChart data={modelAggregates.map(m => ({
+                        model: m.model,
+                        Throughput: (parseFloat(m.avgTps) / Math.max(...modelAggregates.map(x => parseFloat(x.avgTps)))) * 100,
+                        'Low Latency': 100 - (parseFloat(m.avgP95) / Math.max(...modelAggregates.map(x => parseFloat(x.avgP95)))) * 100,
+                        Reliability: 100 - parseFloat(m.avgErrorRate),
+                        Consistency: 100 - ((parseFloat(m.avgP99) - parseFloat(m.avgP50)) / parseFloat(m.avgP95)) * 50
+                      }))}>
+                        <PolarGrid />
+                        <PolarAngleAxis dataKey="model" />
+                        <PolarRadiusAxis angle={90} domain={[0, 100]} />
+                        {modelAggregates.map((_, idx) => (
+                          <Radar
+                            key={idx}
+                            name={modelAggregates[idx].model}
+                            dataKey={(data) => data[idx] ? Object.values(data[idx]).filter(v => typeof v === 'number')[0] : 0}
+                            stroke={COLORS[idx % COLORS.length]}
+                            fill={COLORS[idx % COLORS.length]}
+                            fillOpacity={0.3}
+                          />
+                        ))}
                         <Legend />
-                        <Bar dataKey="avgP50" fill="#27ae60" name="P50" />
-                        <Bar dataKey="avgP95" fill="#e67e22" name="P95" />
-                        <Bar dataKey="avgP99" fill="#e74c3c" name="P99" />
-                      </BarChart>
+                      </RadarChart>
                     </ResponsiveContainer>
                   </div>
                 </>
               )}
 
               <div className="card">
-                <div className="card-header">Best Model For...</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-                  <div style={{ padding: '1rem', background: '#ecf0f1', borderRadius: '4px', borderLeft: '4px solid #27ae60' }}>
-                    <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>Highest Throughput</h4>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#27ae60', marginBottom: '0.25rem' }}>
-                      {[...modelAggregates].sort((a, b) => b.avgTps - a.avgTps)[0]?.avgTps} tps
-                    </p>
-                    <p style={{ fontSize: '0.9rem', color: '#7f8c8d' }}>
-                      {[...modelAggregates].sort((a, b) => b.avgTps - a.avgTps)[0]?.model}
-                    </p>
-                  </div>
-                  <div style={{ padding: '1rem', background: '#ecf0f1', borderRadius: '4px', borderLeft: '4px solid #3498db' }}>
-                    <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>Lowest P95 Latency</h4>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#3498db', marginBottom: '0.25rem' }}>
-                      {[...modelAggregates].sort((a, b) => a.avgP95 - b.avgP95)[0]?.avgP95} ms
-                    </p>
-                    <p style={{ fontSize: '0.9rem', color: '#7f8c8d' }}>
-                      {[...modelAggregates].sort((a, b) => a.avgP95 - b.avgP95)[0]?.model}
-                    </p>
-                  </div>
-                  <div style={{ padding: '1rem', background: '#ecf0f1', borderRadius: '4px', borderLeft: '4px solid #9b59b6' }}>
-                    <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>Most Stable</h4>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#9b59b6', marginBottom: '0.25rem' }}>
-                      {[...modelAggregates].sort((a, b) => a.avgErrorRate - b.avgErrorRate)[0]?.avgErrorRate}% error
-                    </p>
-                    <p style={{ fontSize: '0.9rem', color: '#7f8c8d' }}>
-                      {[...modelAggregates].sort((a, b) => a.avgErrorRate - b.avgErrorRate)[0]?.model}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card-header">Detailed Results</div>
+                <div className="card-header">📋 Detailed Results</div>
                 <table className="table">
                   <thead>
                     <tr>
@@ -260,14 +426,40 @@ function Results() {
                   <tbody>
                     {results.map((result, idx) => (
                       <tr key={idx}>
-                        <td><code>{result.model_id}</code></td>
-                        <td>{result.scenario}</td>
-                        <td>{result.tps?.toFixed(2) || '-'}</td>
+                        <td><strong>{result.model_alias || result.model_id}</strong></td>
+                        <td>
+                          <span style={{ 
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: '#ecf0f1',
+                            fontSize: '0.85rem'
+                          }}>
+                            {result.scenario}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 'bold', color: '#27ae60' }}>
+                            {result.tps?.toFixed(2) || '-'}
+                          </span>
+                        </td>
                         <td>{result.ttft?.toFixed(0) || '-'}</td>
                         <td>{result.latency_p50?.toFixed(0) || '-'}</td>
                         <td>{result.latency_p95?.toFixed(0) || '-'}</td>
                         <td>{result.latency_p99?.toFixed(0) || '-'}</td>
-                        <td>{result.error_rate?.toFixed(1) || '0'}%</td>
+                        <td>
+                          <span style={{ 
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontWeight: 'bold',
+                            background: (result.error_rate || 0) > 5 ? '#e74c3c' : '#27ae60',
+                            color: 'white',
+                            fontSize: '0.85rem'
+                          }}>
+                            {result.error_rate?.toFixed(1) || '0'}%
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

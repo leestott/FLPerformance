@@ -82,8 +82,11 @@ class BenchmarkEngine {
 
   /**
    * Run a single inference and measure metrics
+   * @param {Object} modelInfo - Model info from Foundry Local SDK
+   * @param {Object} scenario - Benchmark scenario
+   * @param {Object} config - Benchmark configuration
    */
-  async runSingleInference(service, scenario, config) {
+  async runSingleInference(modelInfo, scenario, config) {
     const metrics = {
       startTime: performance.now(),
       endTime: null,
@@ -103,10 +106,16 @@ class BenchmarkEngine {
       const startTime = Date.now();
       let firstTokenTime = null;
 
+      // Get OpenAI client from orchestrator
+      const client = orchestrator.getOpenAIClient();
+
+      // Use the alias for OpenAI API calls (not the full Foundry model ID)
+      const modelName = modelInfo.alias;
+
       // Use streaming to measure TTFT if enabled
       if (config.streaming) {
-        const stream = await service.client.chat.completions.create({
-          model: service.modelAlias || service.modelId,
+        const stream = await client.chat.completions.create({
+          model: modelName, // Use alias for OpenAI API
           messages: [{ role: 'user', content: scenario.prompt }],
           max_tokens: scenario.max_tokens || 100,
           temperature: config.temperature || 0.7,
@@ -125,8 +134,8 @@ class BenchmarkEngine {
         }
       } else {
         // Non-streaming inference
-        const response = await service.client.chat.completions.create({
-          model: service.modelAlias || service.modelId,
+        const response = await client.chat.completions.create({
+          model: modelName, // Use alias for OpenAI API
           messages: [{ role: 'user', content: scenario.prompt }],
           max_tokens: scenario.max_tokens || 100,
           temperature: config.temperature || 0.7
@@ -152,10 +161,12 @@ class BenchmarkEngine {
    */
   async runScenario(modelId, scenario, config, progressCallback) {
     const benchmarkLogger = createBenchmarkLogger(modelId);
-    const service = orchestrator.getService(modelId);
     
-    if (!service) {
-      throw new Error(`Service not running for model ${modelId}`);
+    // Get model info from orchestrator
+    const modelInfo = orchestrator.getLoadedModelInfo(modelId);
+    
+    if (!modelInfo) {
+      throw new Error(`Model ${modelId} not loaded. Please load the model first.`);
     }
 
     benchmarkLogger.info('Running scenario', { 
@@ -187,8 +198,8 @@ class BenchmarkEngine {
       // Collect resource metrics before inference
       const resourcesBefore = await this.collectResourceMetrics();
       
-      // Run inference
-      const metrics = await this.runSingleInference(service, scenario, config);
+      // Run inference with modelInfo
+      const metrics = await this.runSingleInference(modelInfo, scenario, config);
       
       // Collect resource metrics after inference
       const resourcesAfter = await this.collectResourceMetrics();
@@ -308,12 +319,22 @@ class BenchmarkEngine {
       for (const modelId of modelIds) {
         benchmarkLogger.info('Benchmarking model', { modelId });
 
-        // Check service health
-        const health = await orchestrator.checkServiceHealth(modelId);
-        if (!health.healthy) {
-          benchmarkLogger.error('Model service unhealthy', { modelId });
+        // Get model from storage to get alias
+        const model = storage.getModel(modelId);
+        if (!model) {
+          benchmarkLogger.error('Model not found in storage', { modelId });
           storage.saveLog('benchmark', runId, 'error', 
-            `Model ${modelId} service is unhealthy: ${health.error || 'unknown error'}`
+            `Model ${modelId} not found in storage`
+          );
+          continue;
+        }
+
+        // Check model health using alias (not our internal ID)
+        const health = await orchestrator.checkModelHealth(model.alias);
+        if (!health.healthy) {
+          benchmarkLogger.error('Model service unhealthy', { modelId, alias: model.alias, health });
+          storage.saveLog('benchmark', runId, 'error', 
+            `Model ${model.alias} (${modelId}) service is unhealthy: ${health.error || health.status}`
           );
           continue;
         }
