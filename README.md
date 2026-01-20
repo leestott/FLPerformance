@@ -1,20 +1,10 @@
-# FLPerformance - Foundry Local LLM Benchmark Tool
+# FLPerformance - Foundry Local Model Benchmark Tool
 
-A local application with UI for benchmarking multiple Large Language Models (LLMs) running via **Microsoft Foundry Local**.
+A local application with UI for benchmarking multiple Models (SLMs) running via **Microsoft Foundry Local**.
 
 ## ✨ New: Easy Startup Script
 
 **Windows users**: Just run `.\START_APP.ps1` to start everything! Opens 2 terminals + browser automatically. 🚀
-
-## 🎉 Latest Updates (January 2026)
-
-### ✅ Benchmark System Fixed (Jan 20, 2026)
-- **Fixed 100% Error Rate**: Corrected model identifier usage - now uses full model ID instead of alias
-- **Root Cause**: Foundry Local OpenAI API requires complete model ID (e.g., `qwen2.5-coder-0.5b-instruct-cuda-gpu:4`)
-- **Solution**: Updated benchmark engine and test endpoint to use `modelInfo.id` directly
-- **Validation**: Successfully tested with 0% error rate, proper TPS and latency metrics
-- **Live Progress UI**: Real-time status updates with animated progress bars and auto-refresh
-- **Test Endpoint**: Pre-benchmark model validation ensures models respond correctly
 
 ### ✅ Working Features
 - **Complete Benchmark System**: Full end-to-end benchmarking with accurate metrics
@@ -26,7 +16,7 @@ A local application with UI for benchmarking multiple Large Language Models (LLM
 
 ## Overview
 
-FLPerformance enables you to:
+FLPerformance Foundry Local Performance enables you to:
 - Manage Foundry Local service using the official JavaScript SDK
 - Load and benchmark multiple models simultaneously
 - Run standardized benchmark tests across models
