@@ -19,6 +19,12 @@ Before you begin, ensure you have:
 - **CPU:** Modern multi-core processor (Intel i7/i9, AMD Ryzen 7/9)
 - **RAM:** 32 GB or more
 
+**ARM64 Windows Compatibility (January 2026):**
+- **Frontend Features**: ✅ All visualizations and UI components work perfectly
+- **Backend Integration**: ✅ APIs, data processing, and storage functional
+- **Model Inference**: ⚠️ Foundry Local compatibility issues on Snapdragon systems
+- **Recommendation**: Use x64 Windows/Linux systems for full functionality
+
 ### 2. Software Prerequisites
 
 #### Node.js and NPM
@@ -28,9 +34,11 @@ Before you begin, ensure you have:
 
 #### Microsoft Foundry Local
 - **Required:** Foundry Local CLI must be installed and in your PATH
-- **Check:** Run `foundry-local --version`
+- **Check:** Run `foundry --version`
 - **Install:** Follow Microsoft Foundry Local installation instructions
 - **Documentation:** Visit https://aka.ms/foundry-local
+
+**ARM64 Windows Note:** Foundry Local v0.8.117 has known compatibility issues on ARM64 Windows systems. While installation succeeds, the service may not properly accept connections.
 
 #### Git (optional, for cloning)
 - **Check:** Run `git --version`
@@ -145,7 +153,7 @@ In the UI:
 
 ### Foundry Local Not Found
 
-**Problem:** `foundry-local: command not found`
+**Problem:** `foundry: command not found`
 
 **Solutions:**
 1. Verify Foundry Local is installed
@@ -153,7 +161,23 @@ In the UI:
    - Windows: Add installation directory to System PATH
    - macOS/Linux: Add to `.bashrc` or `.zshrc`
 3. Restart terminal/command prompt after PATH changes
-4. Try alternate commands: `foundry` or `fl`
+4. Try alternate commands: `foundry-local` or `fl`
+
+### ARM64 Windows Compatibility Issues
+
+**Problem:** Models load but benchmarks fail with connection errors
+
+**Diagnosis:**
+```powershell
+foundry --version  # Should show v0.8.117+
+Test-NetConnection -ComputerName "127.0.0.1" -Port 58123  # May fail
+```
+
+**Solutions:**
+1. **Explore Frontend**: All visualizations work perfectly regardless of backend
+2. **Alternative Testing**: Use x64 Windows/Linux systems for full functionality
+3. **Mock Data**: Modify storage.json to test with sample benchmark results
+4. **Alternative Backends**: Consider Ollama, ONNX Runtime, or Hugging Face Transformers
 
 ### Port Already in Use
 
