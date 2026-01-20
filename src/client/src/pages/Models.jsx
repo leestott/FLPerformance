@@ -122,6 +122,18 @@ function Models() {
     }
   };
 
+  const handleTestModel = async (model) => {
+    try {
+      setSuccess('Testing model inference...');
+      const res = await modelsAPI.test(model.id, { prompt: 'Say hello in one sentence.' });
+      setSuccess(`✅ Test successful! Response: "${res.data.response}" (${res.data.latency}ms)`);
+      setTimeout(() => setSuccess(null), 8000);
+    } catch (err) {
+      setError(`❌ Test failed: ${err.response?.data?.error || err.message}`);
+      setTimeout(() => setError(null), 8000);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const badgeClass = {
       running: 'badge-success',
@@ -194,13 +206,22 @@ function Models() {
                         Downloading...
                       </button>
                     ) : model.status === 'running' ? (
-                      <button 
-                        className="btn btn-danger" 
-                        onClick={() => handleStopService(model.id)}
-                        title="Unload model"
-                      >
-                        Unload
-                      </button>
+                      <>
+                        <button 
+                          className="btn btn-primary" 
+                          onClick={() => handleTestModel(model)}
+                          title="Test inference with a simple prompt"
+                        >
+                          Test
+                        </button>
+                        <button 
+                          className="btn btn-danger" 
+                          onClick={() => handleStopService(model.id)}
+                          title="Unload model"
+                        >
+                          Unload
+                        </button>
+                      </>
                     ) : null}
                     <button 
                       className="btn btn-secondary" 

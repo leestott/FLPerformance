@@ -161,7 +161,7 @@ In the UI:
    - Windows: Add installation directory to System PATH
    - macOS/Linux: Add to `.bashrc` or `.zshrc`
 3. Restart terminal/command prompt after PATH changes
-4. Try alternate commands: `foundry-local` or `fl`
+4. Verify with: `foundry --help`
 
 ### ARM64 Windows Compatibility Issues
 
@@ -198,9 +198,9 @@ Test-NetConnection -ComputerName "127.0.0.1" -Port 58123  # May fail
 **Solutions:**
 1. Check internet connection
 2. Verify sufficient disk space
-3. Try downloading manually:
+3. Try running the model (downloads automatically):
    ```bash
-   foundry-local models download phi-3-mini-4k-instruct
+   foundry model run phi-3-mini-4k-instruct
    ```
 4. Check Foundry Local logs for details
 
@@ -210,10 +210,10 @@ Test-NetConnection -ComputerName "127.0.0.1" -Port 58123  # May fail
 
 **Solutions:**
 1. Check the service logs in the UI (click "Logs" button)
-2. Verify Foundry Local is running: `foundry-local service status`
+2. Verify Foundry Local is running: `foundry service status`
 3. Try restarting Foundry Local management service:
    ```bash
-   foundry-local service restart
+   foundry service restart
    ```
 4. Check for port conflicts
 5. Review system resources (RAM, disk space)
@@ -339,7 +339,7 @@ Note: Models cached by Foundry Local are not removed automatically. Use Foundry 
 
 If you encounter issues not covered here:
 
-1. Check `/docs/limitations.md` for known issues
+1. Check `/docs/BENCHMARK_GUIDE.md` for known issues and troubleshooting
 2. Review logs in the UI
 3. Check backend console output
 4. Review Foundry Local documentation
@@ -350,7 +350,7 @@ If you encounter issues not covered here:
 Once installation is complete:
 
 1. Read the main README.md
-2. Review `/docs/architecture.md` to understand the system
+2. Review `/docs/ARCHITECTURE.md` to understand the system
 3. Add your models
 4. Run your first benchmark
 5. Explore results and export data

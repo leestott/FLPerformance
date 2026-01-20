@@ -180,14 +180,14 @@ const client2 = new OpenAI({ baseURL: 'http://localhost:8081' });
 ### Service Fails to Start
 ```bash
 # Check Foundry Local installation
-foundry-local --version
+foundry --version
 
 # Verify CLI in PATH
-where foundry-local   # Windows
-which foundry-local   # macOS/Linux
+where foundry   # Windows
+which foundry   # macOS/Linux
 
 # Try manual start
-foundry-local service start
+foundry service start
 ```
 
 ### Model Load Fails
@@ -197,7 +197,7 @@ df -h  # Linux/macOS
 Get-PSDrive  # Windows
 
 # Try manual load
-foundry-local model load microsoft/phi-3-mini-4k-instruct
+foundry model run phi-3-mini-4k-instruct
 
 # Check logs
 # See server console output
@@ -234,7 +234,7 @@ node scripts/validate-urls.js
 curl http://localhost:3001/api/health
 
 # Check Foundry Local
-foundry-local --version
+foundry --version
 ```
 
 ### Full Test Suite
@@ -252,7 +252,7 @@ See [TESTING_CHECKLIST.md](TESTING_CHECKLIST.md) for 23 comprehensive tests
 
 ### Documentation
 - `README.md` - Main documentation
-- `docs/quickstart.md` - Getting started guide
+- `../QUICK_START.md` - Getting started guide
 - `MIGRATION.md` - Migration from old implementation
 - `TESTING_CHECKLIST.md` - Testing procedures
 - `IMPLEMENTATION_SUMMARY.md` - Complete implementation details
@@ -292,7 +292,7 @@ See [TESTING_CHECKLIST.md](TESTING_CHECKLIST.md) for 23 comprehensive tests
 ```bash
 node --version    # Need v18+
 npm --version     # Need v9+
-foundry-local --version  # Must be installed
+foundry --version  # Must be installed
 ```
 
 ### Installation
@@ -332,8 +332,7 @@ curl -X POST http://127.0.0.1:8080/v1/chat/completions \
 
 ## Resources
 
-- **Quick Start**: [docs/quickstart.md](docs/quickstart.md)
-- **Migration Guide**: [MIGRATION.md](MIGRATION.md)
+- **Quick Start**: [QUICK_START.md](../QUICK_START.md)
 - **Testing**: [TESTING_CHECKLIST.md](TESTING_CHECKLIST.md)
 - **Foundry Local Docs**: https://aka.ms/foundry-local-docs
 - **GitHub**: https://github.com/microsoft/foundry-local
@@ -343,10 +342,10 @@ curl -X POST http://127.0.0.1:8080/v1/chat/completions \
 
 ## Getting Help
 
-1. Check [docs/quickstart.md](docs/quickstart.md)
-2. Review [MIGRATION.md](MIGRATION.md) for common issues
+1. Check [QUICK_START.md](../QUICK_START.md)
+2. Review [BENCHMARK_GUIDE.md](BENCHMARK_GUIDE.md) for troubleshooting
 3. Check server console logs
-4. Verify Foundry Local CLI works: `foundry-local --version`
+4. Verify Foundry Local CLI works: `foundry --version`
 5. Run validation: `node scripts/validate-urls.js`
 
 ---

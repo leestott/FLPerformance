@@ -11,12 +11,13 @@ winget install Microsoft.FoundryLocal
 
 **macOS:**
 ```bash
-brew install foundry-local
+brew tap microsoft/foundrylocal
+brew install foundrylocal
 ```
 
 **Verify it worked:**
 ```bash
-foundry-local --version
+foundry --version
 ```
 
 ✅ If you see a version number, you're good to go!
@@ -166,12 +167,12 @@ Your FLPerformance setup is complete. You can now:
 
 **Make sure it's installed:**
 ```bash
-foundry-local --version
+foundry --version
 ```
 
 **If not found:**
 - Windows: `winget install Microsoft.FoundryLocal`
-- macOS: `brew install foundry-local`
+- macOS: `brew tap microsoft/foundrylocal && brew install foundrylocal`
 - Restart your terminal after installation
 
 ### Model won't load?
@@ -201,9 +202,9 @@ taskkill /PID <PID> /F
 
 ## 📚 Next Steps
 
-- Read [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for commands
-- Check [docs/quickstart.md](docs/quickstart.md) for detailed guide
-- See [TESTING_CHECKLIST.md](TESTING_CHECKLIST.md) for testing
+- Read [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) for commands
+- Check [QUICK_START.md](QUICK_START.md) for detailed guide
+- See [TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md) for testing
 
 ---
 

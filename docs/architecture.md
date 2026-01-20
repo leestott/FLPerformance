@@ -431,3 +431,164 @@ npm start      # Start production server
 - Benchmark history with statistics
 - Improved error handling and logging
 - Fixed critical model loading bug
+
+---
+
+## Benchmark Execution Workflow
+
+### Complete Benchmark Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. User Prepares Models                                      │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                ┌───────────▼──────────┐
+                │ Add Model            │
+                │ (alias + model_id)   │
+                └───────────┬──────────┘
+                            │
+                ┌───────────▼──────────┐
+                │ Load Model           │
+                │ - Downloads if needed│
+                │ - Loads into Foundry │
+                └───────────┬──────────┘
+                            │
+                ┌───────────▼──────────┐
+                │ ✨ Test Model ✨     │
+                │ (NEW - Verify works) │
+                └───────────┬──────────┘
+                            │
+┌─────────────────────────────────────────────────────────────┐
+│ 2. User Runs Benchmark                                       │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                ┌───────────▼──────────┐
+                │ Select Models        │
+                │ Select Suite         │
+                │ Configure Settings   │
+                └───────────┬──────────┘
+                            │
+                ┌───────────▼──────────┐
+                │ Start Benchmark      │
+                │ (POST /benchmarks)   │
+                └───────────┬──────────┘
+                            │
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Benchmark Engine Execution                                │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+        ┌───────────────────┴───────────────────┐
+        │                                       │
+    For Each Model                    For Each Scenario
+        │                                       │
+        ▼                                       ▼
+┌────────────────┐                    ┌────────────────┐
+│ Validate Model │                    │ Run Iterations │
+│ - Check storage│                    │ - N times      │
+│ - Check loaded │                    └────────┬───────┘
+│ - Health check │                             │
+└───────┬────────┘                    ┌────────▼───────┐
+        │                             │ Single Inference│
+        ▼                             │ - Start timer  │
+┌────────────────┐                    │ - Call OpenAI  │
+│ Model Ready ✓  │                    │ - Count tokens │
+└───────┬────────┘                    │ - End timer    │
+        │                             └────────┬───────┘
+        │                                      │
+        │                             ┌────────▼───────┐
+        │                             │ Collect Metrics│
+        │                             │ - TPS          │
+        │                             │ - TTFT         │
+        │                             │ - Latency      │
+        │                             │ - Resources    │
+        │                             └────────┬───────┘
+        │                                      │
+        └──────────────┬───────────────────────┘
+                       │
+                ┌──────▼──────┐
+                │ Aggregate   │
+                │ Results     │
+                └──────┬──────┘
+                       │
+                ┌──────▼──────┐
+                │ Save to     │
+                │ Storage     │
+                └──────┬──────┘
+                       │
+┌─────────────────────────────────────────────────────────────┐
+│ 4. Results Visualization                                     │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                ┌───────────▼──────────┐
+                │ Load Results         │
+                │ (from storage.json)  │
+                └───────────┬──────────┘
+                            │
+        ┌───────────────────┴───────────────────┐
+        │                                       │
+┌───────▼────────┐                    ┌─────────▼──────┐
+│ Performance    │                    │ Detailed       │
+│ Scores         │                    │ Metrics        │
+│ - 0-100 scale  │                    │ - TPS charts   │
+│ - Color coded  │                    │ - Latency      │
+└────────────────┘                    │ - Radar graph  │
+                                      └────────────────┘
+```
+
+### Model Identifier Flow
+
+```
+Storage Model
+    ↓
+Get from Storage: { id, alias, model_id }
+    ↓
+Check Loaded in Orchestrator
+    ↓
+Get SDK Model Info: { id, alias, deviceType, ... }
+    ↓
+Use modelInfo.alias in OpenAI API
+    ↓
+✅ Successful Inference
+    ↓
+Collect metrics (TPS, latency, tokens)
+```
+
+### Test Endpoint Flow
+
+```
+User clicks "Test" button
+    │
+    ▼
+POST /api/models/:id/test
+    │
+    ├──► Get model from storage
+    │       └─► model = { id, alias, model_id }
+    │
+    ├──► Get loaded model info
+    │       └─► modelInfo = { id, alias, deviceType, ... }
+    │
+    ├──► Get OpenAI client
+    │       └─► client = orchestrator.getOpenAIClient()
+    │
+    ├──► Create request
+    │       └─► { model: modelInfo.alias, messages: [...] }
+    │
+    ├──► Call OpenAI API
+    │       └─► response = await client.chat.completions.create(...)
+    │
+    └──► Return results
+            ├─► response: "Hello, I am working!"
+            ├─► usage: { completion_tokens: 8, ... }
+            ├─► latency: 1234 (ms)
+            └─► model: "qwen2.5-coder-0.5b"
+```
+
+### Quick Usage Summary
+
+1. **Add Models** → Load them → **Test them** ✨
+2. **Configure Benchmark** → Run it
+3. **View Results** → Analyze performance
+4. **Export Data** → JSON or CSV
+
+**Key Innovation**: Test button ensures models work before running full benchmarks!

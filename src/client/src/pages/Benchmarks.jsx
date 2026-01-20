@@ -19,6 +19,9 @@ function Benchmarks() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [currentRunId, setCurrentRunId] = useState(null);
+  const [runStatus, setRunStatus] = useState(null);
+  const [runProgress, setRunProgress] = useState(0);
 
   useEffect(() => {
     loadModels();
@@ -33,6 +36,36 @@ function Benchmarks() {
     
     return () => clearInterval(interval);
   }, []);
+
+  // Poll run status when a run is in progress
+  useEffect(() => {
+    if (!currentRunId) return;
+    
+    const interval = setInterval(async () => {
+      try {
+        const res = await benchmarksAPI.status(currentRunId);
+        setRunStatus(res.data.status);
+        if (res.data.progress !== null && res.data.progress !== undefined) {
+          setRunProgress(res.data.progress);
+        }
+
+        // Stop polling when not running
+        if (res.data.status !== 'running') {
+          clearInterval(interval);
+          loadRecentRuns();
+          if (res.data.status === 'completed') {
+            setSuccess('✅ Benchmark completed!');
+          } else if (res.data.status === 'failed') {
+            setError('❌ Benchmark failed. Check logs for details.');
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to poll benchmark status:', err);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [currentRunId]);
 
   const loadModels = async () => {
     try {
@@ -146,14 +179,22 @@ function Benchmarks() {
     setError(null);
 
     try {
-      await benchmarksAPI.run({
+      const res = await benchmarksAPI.run({
         modelIds: selectedModels,
         suiteName: selectedSuite,
         selectedScenarios: selectedScenarios, // Pass selected scenarios
         config
       });
-      setSuccess(`Benchmark started with ${selectedScenarios.length} scenario(s)! View progress in the Results tab.`);
+      if (res.data.runId) {
+        setCurrentRunId(res.data.runId);
+        setRunStatus('running');
+        setRunProgress(0);
+      }
+      setSuccess(`Benchmark started with ${selectedScenarios.length} scenario(s)! Run ID: ${res.data.runId || 'n/a'}`);
       setTimeout(() => setSuccess(null), 5000);
+      
+      // Optional: navigate to results page with run param
+      // window.location.href = `/#/results?run=${res.data.runId}`;
     } catch (err) {
       setError(err.response?.data?.error || err.message);
     } finally {
@@ -169,6 +210,20 @@ function Benchmarks() {
 
       {error && <div className="error">{error}</div>}
       {success && <div className="success">{success}</div>}
+
+      {currentRunId && runStatus === 'running' && (
+        <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="spinner" aria-label="Benchmark running" />
+          <div style={{ flex: 1 }}>
+            <h4 style={{ marginBottom: '0.5rem' }}>Benchmark running...</h4>
+            <p style={{ marginBottom: '0.5rem', color: '#7f8c8d' }}>Run ID: <code>{currentRunId}</code></p>
+            <div className="progress-bar-container">
+              <div className="progress-bar-fill" style={{ width: `${runProgress || 5}%` }} />
+            </div>
+            <p style={{ marginTop: '0.5rem', color: '#3498db', fontWeight: 'bold' }}>{runProgress || 0}% completed</p>
+          </div>
+        </div>
+      )}
 
       {/* Statistics Summary */}
       {stats && stats.totalRuns > 0 && (

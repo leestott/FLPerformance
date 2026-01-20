@@ -18,6 +18,7 @@ export const modelsAPI = {
   start: (id) => api.post(`/models/${id}/start`),
   stop: (id) => api.post(`/models/${id}/stop`),
   load: (id) => api.post(`/models/${id}/load`),
+  test: (id, data) => api.post(`/models/${id}/test`, data),
   health: (id) => api.get(`/models/${id}/health`),
   logs: (id, limit = 100) => api.get(`/models/${id}/logs`, { params: { limit } })
 };
@@ -31,7 +32,8 @@ export const benchmarksAPI = {
   getResults: (params = {}) => api.get('/benchmarks/results', { params }),
   exportJSON: (id) => api.get(`/benchmarks/runs/${id}/export/json`, { responseType: 'blob' }),
   exportCSV: (id) => api.get(`/benchmarks/runs/${id}/export/csv`, { responseType: 'blob' }),
-  logs: (id, limit = 100) => api.get(`/benchmarks/runs/${id}/logs`, { params: { limit } })
+  logs: (id, limit = 100) => api.get(`/benchmarks/runs/${id}/logs`, { params: { limit } }),
+  status: (id) => api.get(`/benchmarks/runs/${id}/status`)
 };
 
 // System API

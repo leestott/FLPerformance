@@ -8,17 +8,21 @@ A local application with UI for benchmarking multiple Large Language Models (LLM
 
 ## 🎉 Latest Updates (January 2026)
 
-### ✅ Successfully Implemented Features
-- **Enhanced Results Visualizations**: Comprehensive charts, performance cards, and radar graphs
-- **Benchmark History**: Recent runs table with real-time statistics
-- **Critical Bug Fixes**: Fixed model loading from alias to model_id lookup
-- **Frontend/Backend Integration**: Full API connectivity and data flow
-- **ARM64 Hardware Detection**: Proper Snapdragon X Elite recognition
+### ✅ Benchmark System Fixed (Jan 20, 2026)
+- **Fixed 100% Error Rate**: Corrected model identifier usage - now uses full model ID instead of alias
+- **Root Cause**: Foundry Local OpenAI API requires complete model ID (e.g., `qwen2.5-coder-0.5b-instruct-cuda-gpu:4`)
+- **Solution**: Updated benchmark engine and test endpoint to use `modelInfo.id` directly
+- **Validation**: Successfully tested with 0% error rate, proper TPS and latency metrics
+- **Live Progress UI**: Real-time status updates with animated progress bars and auto-refresh
+- **Test Endpoint**: Pre-benchmark model validation ensures models respond correctly
 
-### ⚠️ Known Compatibility Issue
-- **Foundry Local ARM64**: Service initialization issues on Windows ARM64 systems
-- **Workaround**: Consider using smaller models (qwen2.5-0.5b) or alternative model serving
-- **Status**: Under investigation - visualizations and benchmark system are ready
+### ✅ Working Features
+- **Complete Benchmark System**: Full end-to-end benchmarking with accurate metrics
+- **Enhanced Visualizations**: Performance cards, comparison charts, and radar graphs
+- **Real-time Progress**: Polling-based status updates every 2 seconds during runs
+- **Results Export**: JSON and CSV export functionality
+- **Hardware Detection**: Comprehensive system information capture
+- **Storage System**: JSON-based storage with optional SQLite support
 
 ## Overview
 
@@ -39,14 +43,15 @@ FLPerformance enables you to:
 winget install Microsoft.FoundryLocal
 
 # macOS
-brew install foundry-local
+brew tap microsoft/foundrylocal
+brew install foundrylocal
 
 # Or download from: https://aka.ms/foundry-local-installer
 ```
 
 Verify installation:
 ```bash
-foundry-local --version
+foundry --version
 ```
 
 ### Installation (3 Steps)
@@ -67,8 +72,6 @@ chmod +x scripts/install.sh && ./scripts/install.sh
 
 **Note**: Installation uses `--no-optional` flag to skip SQLite database (requires build tools).  
 Results are saved as JSON files instead. This works perfectly for all features!
-
-**ARM64 Windows Note**: If you're on ARM64 Windows (Snapdragon X Elite), the visualizations and benchmark system work perfectly, but you may need to use alternative models or check Foundry Local ARM64 compatibility.
 
 **Step 3: Start the application**
 ```powershell
@@ -106,7 +109,7 @@ You'll see:
 
 1. **Microsoft Foundry Local**
    - Download from: https://aka.ms/foundry-local-installer
-   - Verify installation: `foundry-local --version`
+   - Verify installation: `foundry --version`
    - **Note**: Foundry Local CLI must be in your PATH
 
 2. **Node.js & NPM**
@@ -217,9 +220,10 @@ FLPerformance/
 │   └── suites/
 │       └── default.json     # Default benchmark suite definition
 ├── docs/
-│   ├── architecture.md      # System architecture
-│   ├── limitations.md       # Known limitations
-│   └── api.md              # API documentation
+│   ├── ARCHITECTURE.md      # System architecture
+│   ├── API.md               # REST API reference
+│   ├── SETUP.md             # Setup documentation
+│   └── BENCHMARK_GUIDE.md   # Troubleshooting guide
 ├── scripts/
 │   └── helpers/            # Utility scripts
 ├── results/
@@ -267,12 +271,12 @@ FLPerformance uses the official **foundry-local-sdk** JavaScript package to mana
 - **OpenAI-Compatible API**: Standard OpenAI client for inference requests
 - **Model Differentiation**: Models are identified by their model ID in API calls
 
-See [Architecture Documentation](docs/architecture.md) for details.
+See [Architecture Documentation](docs/ARCHITECTURE.md) for details.
 
 ## Troubleshooting
 
 ### Service fails to start
-- Ensure Foundry Local is installed: `foundry-local --version`
+- Ensure Foundry Local is installed: `foundry --version`
 - Verify Foundry Local CLI is in your PATH
 - Check that port 8080 is available (default Foundry Local port)
 - View logs in the **Models** tab for specific error messages
@@ -281,36 +285,34 @@ See [Architecture Documentation](docs/architecture.md) for details.
 - Verify sufficient disk space for model download
 - Check network connectivity for first-time downloads
 - Ensure adequate RAM for model size
-- Try manually loading with Foundry Local CLI: `foundry-local model load <model-id>`
+- Try manually loading with Foundry Local CLI: `foundry model run <model-name>`
 
 ### Benchmark timeouts
 - Increase timeout values in Settings
 - Reduce concurrency level
 - Check system resource availability (RAM, GPU memory)
 
-### ARM64 Windows Compatibility (Snapdragon X Elite)
-- **Symptom**: Models load successfully but benchmarks fail with 500 errors
-- **Cause**: Foundry Local service doesn't properly start on some ARM64 systems
-- **Verification**: Check if `foundry serve` keeps the service running
-- **Alternatives**: Try smaller models like `qwen2.5-0.5b-instruct-generic-cpu:4`
-- **Status**: Frontend visualizations and backend work perfectly - issue is Foundry Local ARM64 compatibility
+### Test Models Before Benchmarking
+- Use the **Test** button in the Models tab to verify inference works
+- Successful test ensures model will work in benchmarks
+- Test validates both model loading and inference response
+- Quick way to catch configuration issues early
 
 ### Installation Issues
 - Run the appropriate installation script (install.ps1 or install.sh) for detailed diagnostics
-- Check [Quick Start Guide](docs/quickstart.md) for common installation issues
+- Check [Quick Start Guide](QUICK_START.md) for common installation issues
 - Verify Node.js version: `node --version` (must be v18+)
 
 ## Documentation
 
 For more detailed information, see:
-- [Quick Start Guide](docs/quickstart.md) - Comprehensive getting started guide
-- [Quick Reference](QUICK_REFERENCE.md) - Commands and code patterns cheat sheet
-- [Architecture Documentation](docs/architecture.md) - System design and SDK integration
-- [Known Limitations](docs/limitations.md) - Current constraints and workarounds
-- [API Reference](docs/api.md) - REST API endpoint documentation
-- [Migration Guide](MIGRATION.md) - Migrating from previous implementation
-- [Testing Checklist](TESTING_CHECKLIST.md) - 23 comprehensive test cases
-- [Implementation Summary](IMPLEMENTATION_SUMMARY.md) - Complete implementation details
+- [Quick Start Guide](QUICK_START.md) - Comprehensive getting started guide
+- [Quick Reference](docs/QUICK_REFERENCE.md) - Commands and code patterns cheat sheet
+- [Architecture Documentation](docs/ARCHITECTURE.md) - System design and SDK integration
+- [API Reference](docs/API.md) - REST API endpoint documentation
+- [Setup Guide](docs/SETUP.md) - Detailed installation and configuration
+- [Benchmark Guide](docs/BENCHMARK_GUIDE.md) - Troubleshooting and testing guide
+- [Testing Checklist](docs/TESTING_CHECKLIST.md) - Comprehensive test cases
 
 ## Resources
 

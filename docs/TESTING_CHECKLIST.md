@@ -6,7 +6,7 @@ This checklist helps verify the SDK integration is working correctly after migra
 
 - [ ] **Foundry Local Installed**
   ```bash
-  foundry-local --version
+  foundry --version
   ```
   Expected: Version number (e.g., `1.0.0`)
 
@@ -24,8 +24,8 @@ This checklist helps verify the SDK integration is working correctly after migra
 
 - [ ] **Foundry Local in PATH**
   ```bash
-  where foundry-local   # Windows
-  which foundry-local   # macOS/Linux
+  where foundry   # Windows
+  which foundry   # macOS/Linux
   ```
   Expected: Path to Foundry Local executable
 
@@ -422,7 +422,7 @@ This checklist helps verify the SDK integration is working correctly after migra
 ### Test 23: Documentation Accuracy
 
 - [ ] **Quick Start Guide**
-  - Follow docs/quickstart.md
+  - Follow ../QUICK_START.md
   - Expected: All steps work as documented
 
 - [ ] **Migration Guide**
@@ -430,7 +430,7 @@ This checklist helps verify the SDK integration is working correctly after migra
   - Expected: All changes documented
 
 - [ ] **Architecture Docs**
-  - Review docs/architecture.md
+  - Review docs/ARCHITECTURE.md
   - Expected: Matches actual implementation
 
 ## Sign-Off

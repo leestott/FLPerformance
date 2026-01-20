@@ -217,6 +217,77 @@ app.post('/api/models/:id/load', async (req, res) => {
 });
 
 /**
+ * POST /api/models/:id/test
+ * Test inference with a simple prompt
+ */
+app.post('/api/models/:id/test', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { prompt } = req.body;
+    const model = storage.getModel(id);
+    
+    if (!model) {
+      return res.status(404).json({ error: 'Model not found' });
+    }
+    
+    // Get loaded model info
+    const modelInfo = orchestrator.getLoadedModelInfo(id);
+    if (!modelInfo) {
+      return res.status(400).json({ error: 'Model not loaded in Foundry Local' });
+    }
+    
+    const client = orchestrator.getOpenAIClient();
+    const testPrompt = prompt || 'Say "Hello, I am working!" in one sentence.';
+    const modelName = modelInfo.id;  // Use full ID as required by Foundry Local API
+    
+    logger.info('Testing model inference', { 
+      id, 
+      alias: modelInfo.alias,
+      modelId: modelInfo.id,
+      using: modelName,
+      prompt: testPrompt 
+    });
+    
+    const startTime = Date.now();
+    const response = await client.chat.completions.create({
+      model: modelName,
+      messages: [{ role: 'user', content: testPrompt }],
+      max_tokens: 50,
+      temperature: 0.7
+    });
+    
+    const endTime = Date.now();
+    const latency = endTime - startTime;
+    
+    logger.info('Test inference successful', {
+      id,
+      alias: modelInfo.alias,
+      latency,
+      tokens: response.usage?.completion_tokens
+    });
+    
+    res.json({ 
+      success: true,
+      response: response.choices[0]?.message?.content,
+      usage: response.usage,
+      latency,
+      model: modelInfo.alias
+    });
+  } catch (error) {
+    logger.error('Test inference failed', { 
+      id: req.params.id,
+      error: error.message,
+      status: error.status,
+      response: error.response?.data
+    });
+    res.status(500).json({ 
+      error: error.message,
+      details: error.response?.data || error.toString()
+    });
+  }
+});
+
+/**
  * GET /api/models/:id/health
  * Check model health (whether loaded in service)
  */
@@ -314,16 +385,21 @@ app.post('/api/benchmarks/run', async (req, res) => {
       });
     }
 
-    // Start benchmark (async)
-    benchmark.runBenchmark(modelIds, suiteName, suite, config || {}, (progress) => {
-      // Progress callback - could emit via WebSocket for real-time updates
-      logger.info('Benchmark progress', progress);
-    }).catch(error => {
-      logger.error('Benchmark failed', { error: error.message });
-    });
+    // Start benchmark (async) and return runId immediately
+    const { runId } = await benchmark.runBenchmark(
+      modelIds, 
+      suiteName, 
+      suite, 
+      config || {}, 
+      (progress) => {
+        logger.info('Benchmark progress', progress);
+      },
+      { returnImmediately: true }
+    );
 
     res.json({ 
       success: true,
+      runId,
       message: `Benchmark started with ${suite.scenarios.length} scenario(s)`
     });
   } catch (error) {
@@ -374,6 +450,27 @@ app.get('/api/benchmarks/runs/:id', async (req, res) => {
     res.json({ run, results: enrichedResults });
   } catch (error) {
     logger.error('Failed to get benchmark run', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/benchmarks/runs/:id/status
+ * Get benchmark run status & progress
+ */
+app.get('/api/benchmarks/runs/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const status = benchmark.getBenchmarkStatus(id);
+    const run = storage.getBenchmarkRun(id);
+
+    res.json({
+      status: status?.status || run?.status || 'unknown',
+      progress: status?.progress ?? null,
+      run
+    });
+  } catch (error) {
+    logger.error('Failed to get benchmark status', { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });

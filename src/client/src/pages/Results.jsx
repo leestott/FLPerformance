@@ -8,8 +8,18 @@ function Results() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [runStatus, setRunStatus] = useState(null);
+  const [runProgress, setRunProgress] = useState(0);
+  const [initialRunParam, setInitialRunParam] = useState(null);
 
   useEffect(() => {
+    // Parse ?run=<runId>
+    const params = new URLSearchParams(window.location.search);
+    const runParam = params.get('run');
+    if (runParam) {
+      setInitialRunParam(runParam);
+      setSelectedRun(runParam);
+    }
     loadRuns();
   }, []);
 
@@ -19,12 +29,44 @@ function Results() {
     }
   }, [selectedRun]);
 
+  useEffect(() => {
+    if (!selectedRun) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await benchmarksAPI.status(selectedRun);
+        setRunStatus(res.data.status);
+        if (res.data.progress !== null && res.data.progress !== undefined) {
+          setRunProgress(res.data.progress);
+        }
+        if (res.data.status === 'completed') {
+          clearInterval(interval);
+          loadResults(selectedRun);
+          loadRuns();
+        }
+        if (res.data.status === 'failed') {
+          clearInterval(interval);
+          setError('Benchmark failed. Check logs.');
+        }
+      } catch (err) {
+        console.warn('Failed to poll benchmark status:', err);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [selectedRun]);
+
   const loadRuns = async () => {
     try {
       const res = await benchmarksAPI.getRuns();
       setRuns(res.data.runs);
       if (res.data.runs.length > 0) {
-        setSelectedRun(res.data.runs[0].id);
+        if (initialRunParam) {
+          const exists = res.data.runs.find(r => r.id === initialRunParam);
+          setSelectedRun(exists ? initialRunParam : res.data.runs[0].id);
+        } else {
+          setSelectedRun(prev => prev || res.data.runs[0].id);
+        }
       }
       setError(null);
     } catch (err) {
@@ -38,6 +80,9 @@ function Results() {
     try {
       const res = await benchmarksAPI.getRun(runId);
       setResults(res.data.results);
+      if (res.data.run) {
+        setRunStatus(res.data.run.status);
+      }
     } catch (err) {
       setError(err.response?.data?.error || err.message);
     }
@@ -130,6 +175,20 @@ function Results() {
       <h2 style={{ marginBottom: '1.5rem', fontSize: '2rem' }}>Results</h2>
 
       {error && <div className="error">{error}</div>}
+
+      {runStatus === 'running' && (
+        <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="spinner" aria-label="Benchmark running" />
+          <div style={{ flex: 1 }}>
+            <h4 style={{ marginBottom: '0.5rem' }}>Benchmark running...</h4>
+            <p style={{ marginBottom: '0.5rem', color: '#7f8c8d' }}>Run ID: <code>{selectedRun}</code></p>
+            <div className="progress-bar-container">
+              <div className="progress-bar-fill" style={{ width: `${runProgress || 5}%` }} />
+            </div>
+            <p style={{ marginTop: '0.5rem', color: '#3498db', fontWeight: 'bold' }}>{runProgress || 0}% completed</p>
+          </div>
+        </div>
+      )}
 
       {runs.length === 0 ? (
         <div className="card">
@@ -381,27 +440,39 @@ function Results() {
                   <div className="card">
                     <div className="card-header">🎯 Performance Radar Chart</div>
                     <ResponsiveContainer width="100%" height={400}>
-                      <RadarChart data={modelAggregates.map(m => ({
-                        model: m.model,
-                        Throughput: (parseFloat(m.avgTps) / Math.max(...modelAggregates.map(x => parseFloat(x.avgTps)))) * 100,
-                        'Low Latency': 100 - (parseFloat(m.avgP95) / Math.max(...modelAggregates.map(x => parseFloat(x.avgP95)))) * 100,
-                        Reliability: 100 - parseFloat(m.avgErrorRate),
-                        Consistency: 100 - ((parseFloat(m.avgP99) - parseFloat(m.avgP50)) / parseFloat(m.avgP95)) * 50
-                      }))}>
+                      <RadarChart data={[
+                        { metric: 'Throughput', ...Object.fromEntries(modelAggregates.map(m => [
+                          m.model, 
+                          Math.min(100, (parseFloat(m.avgTps) / Math.max(1, ...modelAggregates.map(x => parseFloat(x.avgTps) || 0))) * 100)
+                        ])) },
+                        { metric: 'Low Latency', ...Object.fromEntries(modelAggregates.map(m => [
+                          m.model, 
+                          Math.max(0, 100 - (parseFloat(m.avgP95) / Math.max(1, ...modelAggregates.map(x => parseFloat(x.avgP95) || 1))) * 100)
+                        ])) },
+                        { metric: 'Reliability', ...Object.fromEntries(modelAggregates.map(m => [
+                          m.model, 
+                          Math.max(0, 100 - parseFloat(m.avgErrorRate))
+                        ])) },
+                        { metric: 'Consistency', ...Object.fromEntries(modelAggregates.map(m => [
+                          m.model, 
+                          Math.max(0, 100 - Math.min(100, ((parseFloat(m.avgP99) - parseFloat(m.avgP50)) / Math.max(1, parseFloat(m.avgP95))) * 50))
+                        ])) }
+                      ]}>
                         <PolarGrid />
-                        <PolarAngleAxis dataKey="model" />
+                        <PolarAngleAxis dataKey="metric" />
                         <PolarRadiusAxis angle={90} domain={[0, 100]} />
-                        {modelAggregates.map((_, idx) => (
+                        {modelAggregates.map((model, idx) => (
                           <Radar
                             key={idx}
-                            name={modelAggregates[idx].model}
-                            dataKey={(data) => data[idx] ? Object.values(data[idx]).filter(v => typeof v === 'number')[0] : 0}
+                            name={model.model}
+                            dataKey={model.model}
                             stroke={COLORS[idx % COLORS.length]}
                             fill={COLORS[idx % COLORS.length]}
                             fillOpacity={0.3}
                           />
                         ))}
                         <Legend />
+                        <Tooltip />
                       </RadarChart>
                     </ResponsiveContainer>
                   </div>

@@ -1,7 +1,13 @@
-# Quick Start: Run Your First Successful Benchmark
+# Quick Start: Run Your First Benchmark
 
 ## 🎯 Goal
-Run a successful benchmark with **0% error rate** and see **meaningful visualizations** on the Results page.
+Run a successful benchmark with **0% error rate** and see **meaningful performance metrics** on the Results page.
+
+## ✨ What's New
+- ✅ **Fixed Model Identifier Issue**: Benchmarks now use correct model ID format
+- ✅ **Test Endpoint**: Verify models work before running full benchmarks
+- ✅ **Live Progress**: Real-time status updates during benchmark execution
+- ✅ **Auto-refresh**: Results page updates automatically when benchmark completes
 
 ---
 
@@ -12,164 +18,172 @@ Before running a benchmark, verify:
 - [ ] **Backend is running**: Check terminal shows `Server running on http://localhost:3001`
 - [ ] **Frontend is running**: Check browser at `http://localhost:3000`
 - [ ] **Model is loaded**: Go to Models page, see status = "running"
-- [ ] **Model has unique alias**: e.g., "phi-3.5-mini-npu" (not internal ID)
-- [ ] **Browser cache cleared**: Press `Ctrl+Shift+R` to hard refresh
+- [ ] **Test endpoint works**: Click "Test" button - should return a response
+- [ ] **Browser is current**: Use latest Chrome, Edge, or Firefox
 
 ---
 
-## 🚀 Step-by-Step Quick Test (5 minutes)
+## 🚀 Step-by-Step Quick Test (2-3 minutes)
 
-### Step 1: Configure Benchmark Settings
+### Step 1: Test Your Model First
+
+1. Go to **Models** page
+2. Find your loaded model
+3. Click **"Test"** button
+4. Wait for response (~5-30 seconds)
+5. Verify you see: `{"success": true, "response": "...", "latency": 890}`
+
+**Important**: If test fails, benchmark will also fail. Fix model loading issues first.
+
+### Step 2: Configure Benchmark Settings
 
 Go to **Benchmarks** page and set:
 
 ```
-Timeout: 60000  (60 seconds - CRITICAL for ARM/NPU!)
-Iterations: 3
+Iterations: 1     (quick test)
 Concurrency: 1
+Timeout: 60000    (60 seconds)
 Temperature: 0.7
 Streaming: ✓ (checked)
 ```
 
-### Step 2: Select Scenarios
+### Step 3: Select Scenarios
 
-Instead of all 9 scenarios, select just **1-2 for quick testing**:
+For quick testing, select just **1 scenario**:
 
 - ✓ Simple Q&A - Short
-- ✓ Summarization - Short Text
 - ☐ (Uncheck the rest)
 
-**Why?** First inference on NPU takes 40-60 seconds. Fewer scenarios = faster results.
+**Why?** Single scenario with 1 iteration completes in ~30-60 seconds.
 
-### Step 3: Select Model
+### Step 4: Select Model
 
-- ✓ Check your running model (e.g., phi-3.5-mini)
+- ✓ Check your running model (e.g., qwen2.5-coder-0.5b)
 - Must show status "running" with green indicator
+- Ensure test endpoint passed (from Step 1)
 
-### Step 4: Run Benchmark
+### Step 5: Run Benchmark
 
 1. Click **"Run Benchmark"** button
-2. You'll see progress indicator
-3. **Wait patiently**: 3-5 minutes
-   - First iteration: ~60 seconds (NPU initialization)
-   - Subsequent iterations: ~15-30 seconds each
+2. You'll see animated spinner and progress indicator
+3. **Wait patiently**: 30-60 seconds for 1 scenario, 1 iteration
 4. Status will change from "running" to "completed"
+5. Results page automatically loads when complete
 
 ---
 
-## 📊 Step 5: View Results
+## 📊 Step 6: View Results
 
-1. Go to **Results** page
-2. Select your benchmark run from dropdown (most recent at top)
-3. Click **"Load Results"**
+1. Results page should load automatically
+2. Or manually go to **Results** tab
+3. Select your benchmark run from dropdown (most recent at top)
+4. View comprehensive metrics and charts
 
 ### ✅ What You Should See (Success)
 
 **Performance Scores:**
-- Score: 60-90 (out of 100)
-- Model name: "phi-3.5-mini" (readable alias, NOT "model_1768864...")
+- Score: 50-100 (out of 100, depending on hardware)
+- Model name: Shows model alias (readable name, NOT "model_1768...")
 
-**Best Model Cards:**
-- 🚀 Highest Throughput: **15-25 TPS**
-- ⚡ Lowest Latency: **5000-15000 ms** (5-15 seconds)
-- ✅ Most Reliable: **0% error**
-- ⏱️ Fastest First Token: **3000-8000 ms** (3-8 seconds)
+**Key Metrics:**
+- 🚀 **TPS (Tokens/Second)**: 10-50+ depending on hardware and model size
+- ⚡ **Latency P50**: 500-5000ms (typical response time)
+- ✅ **Error Rate**: **0%** (all iterations successful)
+- ⏱️ **TTFT (Time to First Token)**: 200-2000ms
 
 **Charts:**
 - Bar charts showing TPS and latency values
-- Radar chart comparing dimensions
-- Model name = "phi-3.5-mini" everywhere
-
-**Detailed Results Table:**
-- Model column: "phi-3.5-mini"
-- TPS: > 10 tokens/sec
-- Error %: **0.0%** (green badge)
+- Performance comparison visualizations
+- Model name displayed correctly throughout
 
 ---
 
 ## ❌ What Indicates Failure
 
 If you see:
-- **TPS = 0**: All iterations failed or timed out
-- **Error Rate = 100%**: Timeout too low or model crashed
-- **Model ID showing**: "model_1768864..." means backend not restarted
-- **Score = 0-40**: Data is bad, benchmark failed
+- **TPS = 0**: All iterations failed
+- **Error Rate = 100%**: Model not responding or timeout too low
+- **No data in charts**: Benchmark didn't complete or had errors
 
-**Solution:** Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+**Solutions:**
+1. **Run model test first**: Click "Test" button in Models tab
+2. **Check backend logs**: Look for error messages in terminal
+3. **Verify model loaded**: Status should be "running" not "stopped"
+4. **Increase timeout**: Set to 60000ms if seeing timeouts
+5. **Restart backend**: Stop and restart `npm run server`
 
 ---
 
 ## 🎓 Understanding Your Results
 
-### Expected Performance (Snapdragon X Elite NPU)
+### Typical Performance Ranges (varies by hardware and model)
 
-| Metric | Expected Value | What It Means |
-|--------|---------------|---------------|
-| **TPS** | 15-25 tokens/sec | How fast model generates text |
-| **TTFT** | 3-8 seconds | Time to first token (subsequent runs) |
-| **TTFT (first)** | 40-60 seconds | First inference (NPU warmup) |
-| **P50 Latency** | 5-10 seconds | Typical response time (100 tokens) |
-| **P95 Latency** | 10-15 seconds | 95% of responses faster than this |
-| **Error Rate** | 0% | All inferences succeeded |
-| **Score** | 60-90/100 | Overall performance rating |
+| Metric | Good | Excellent | What It Means |
+|--------|------|-----------|---------------|
+| **TPS** | 10-30 | 30-100+ | Tokens generated per second |
+| **TTFT** | 200-1000ms | < 200ms | Time until first token appears |
+| **P50 Latency** | 500-2000ms | < 500ms | Typical response time (50th percentile) |
+| **P95 Latency** | 1000-5000ms | < 1000ms | 95% of responses faster than this |
+| **Error Rate** | 0-5% | 0% | Percentage of failed inferences |
+| **Score** | 50-80/100 | 80-100/100 | Overall performance rating |
 
 ### Performance Score Breakdown (0-100 scale)
 
-- **30 points**: Throughput (TPS)
-  - 0 TPS = 0 points
-  - 30 TPS = 30 points (max)
-- **40 points**: Latency (P95)
-  - 0 ms = 40 points (max)
-  - 10000 ms = 0 points
-- **30 points**: Reliability (error rate)
-  - 0% error = 30 points (max)
-  - 10% error = 0 points
+- **40 points**: Throughput (TPS) - higher is better
+- **40 points**: Latency (P95) - lower is better  
+- **20 points**: Reliability (error rate) - 0% errors = full points
 
-**Example:** TPS=20, P95=8000ms, Error=0%
-- TPS: (20/100)*30 = 6 points
-- Latency: 40 - (8000/100) = -40 → 0 points
-- Reliability: 30 - (0*10) = 30 points
-- **Total: 36/100** (needs optimization!)
+**Example Calculation:**
+- TPS=25: (25/100)*40 = 10 points
+- P95=1500ms: 40-(1500/100) = 25 points
+- Error=0%: 20-(0*10) = 20 points
+- **Total: 55/100** (Good performance)
 
 ---
 
 ## 🔧 Common Issues & Quick Fixes
 
-### Issue: Timeout errors (100% error rate)
+### Issue: All iterations fail (100% error rate)
 
-**Symptoms:** All iterations fail with "Request was aborted"
-
-**Fix:**
-1. Set timeout to **60000ms** (not 30000ms)
-2. Reduce iterations to 3
-3. Select fewer scenarios (1-2)
-4. Try again
-
-### Issue: Model IDs showing instead of aliases
-
-**Symptoms:** See "model_1768864..." everywhere
+**Symptoms:** Benchmark completes but shows 0% success
 
 **Fix:**
-1. Restart backend: Press `Ctrl+C` then `node src/server/index.js`
-2. Hard refresh browser: `Ctrl+Shift+R`
-3. Load results again
+1. **Test the model first**: Click "Test" button in Models tab
+2. If test fails, model isn't responding correctly
+3. Check model is actually loaded (status = "running")
+4. Restart backend: Stop server and run `npm run server`
+5. Try loading model again
 
-### Issue: Visualizations empty or showing zeros
+### Issue: Timeout errors
 
-**Symptoms:** All charts flat, TPS=0, latency=0
+**Symptoms:** Errors mention "timeout" or "aborted"
 
-**Fix:** This is **OLD DATA** from failed benchmarks
-1. Run a **NEW benchmark** with proper settings
-2. Verify timeout = 60000ms
-3. Wait for completion (3-5 minutes)
-4. Select the NEW benchmark in Results dropdown
+**Fix:**
+1. Increase timeout to **60000ms** (60 seconds)
+2. Reduce iterations to 1-2 for testing
+3. Select only 1 scenario
+4. First inference may take longer - subsequent ones faster
 
-### Issue: First iteration takes forever (60+ seconds)
+### Issue: Model shows "running" but test fails
 
-**This is NORMAL for NPU!**
-- First inference: 40-60 seconds (NPU initialization)
-- Subsequent inferences: 10-20 seconds
-- This is why we increased timeout to 60 seconds
+**Symptoms:** Status is green but test returns error
+
+**Fix:**
+1. Model may not be fully loaded
+2. Wait 30 seconds and try test again
+3. Check backend logs for errors
+4. Try unloading and reloading the model
+5. Verify Foundry Local service is responding
+
+### Issue: Results show model IDs instead of names
+
+**Symptoms:** See "model_1768..." everywhere
+
+**Fix:**
+1. This is OLD behavior - has been fixed
+2. Restart backend server
+3. Hard refresh browser: `Ctrl+Shift+R`
+4. Should now show model alias correctly
 
 ---
 
@@ -202,9 +216,9 @@ Once your quick test succeeds, run the complete benchmark:
 
 ## 📖 More Help
 
-- **Detailed troubleshooting:** [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- **Validation testing:** [VALIDATION_STEPS.md](VALIDATION_STEPS.md)
-- **Test plan:** [VALIDATION_TEST.md](VALIDATION_TEST.md)
+- **Troubleshooting guide:** [BENCHMARK_GUIDE.md](docs/BENCHMARK_GUIDE.md)
+- **Validation testing:** [VALIDATION_STEPS.md](docs/VALIDATION_STEPS.md)
+- **Test checklist:** [TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md)
 
 ---
 

@@ -109,13 +109,16 @@ class BenchmarkEngine {
       // Get OpenAI client from orchestrator
       const client = orchestrator.getOpenAIClient();
 
-      // Use the alias for OpenAI API calls (not the full Foundry model ID)
-      const modelName = modelInfo.alias;
+      // Select model identifier: use id (full model identifier) as it's required by Foundry Local OpenAI API
+      const modelName = modelInfo.id;
+
+      // Log the model being used for debugging
+      logger.info('Running inference', { modelName, modelAlias: modelInfo.alias, scenario: scenario.name });
 
       // Use streaming to measure TTFT if enabled
       if (config.streaming) {
         const stream = await client.chat.completions.create({
-          model: modelName, // Use alias for OpenAI API
+          model: modelName,
           messages: [{ role: 'user', content: scenario.prompt }],
           max_tokens: scenario.max_tokens || 100,
           temperature: config.temperature || 0.7,
@@ -135,7 +138,7 @@ class BenchmarkEngine {
       } else {
         // Non-streaming inference
         const response = await client.chat.completions.create({
-          model: modelName, // Use alias for OpenAI API
+          model: modelName,
           messages: [{ role: 'user', content: scenario.prompt }],
           max_tokens: scenario.max_tokens || 100,
           temperature: config.temperature || 0.7
@@ -151,6 +154,19 @@ class BenchmarkEngine {
     } catch (error) {
       metrics.error = error.message;
       metrics.endTime = performance.now();
+      
+      // Log detailed error information
+      logger.error('Inference failed', {
+        modelName,
+        modelAlias: modelInfo.alias,
+        modelId: modelInfo.id,
+        scenario: scenario.name,
+        error: error.message,
+        errorType: error.constructor.name,
+        status: error.status,
+        response: error.response?.data,
+        stack: error.stack
+      });
     }
 
     return metrics;
@@ -162,16 +178,24 @@ class BenchmarkEngine {
   async runScenario(modelId, scenario, config, progressCallback) {
     const benchmarkLogger = createBenchmarkLogger(modelId);
     
-    // Get model info from orchestrator
+    // Get model info from storage first
+    const model = storage.getModel(modelId);
+    if (!model) {
+      throw new Error(`Model ${modelId} not found in storage.`);
+    }
+    
+    // Get model info from orchestrator (loaded model info)
     const modelInfo = orchestrator.getLoadedModelInfo(modelId);
     
     if (!modelInfo) {
-      throw new Error(`Model ${modelId} not loaded. Please load the model first.`);
+      throw new Error(`Model ${modelId} not loaded in Foundry Local. Please load the model first.`);
     }
 
     benchmarkLogger.info('Running scenario', { 
       scenario: scenario.name,
-      iterations: config.iterations 
+      iterations: config.iterations,
+      modelAlias: modelInfo.alias,
+      modelId: model.model_id
     });
 
     const results = {
@@ -280,7 +304,7 @@ class BenchmarkEngine {
   /**
    * Run complete benchmark suite
    */
-  async runBenchmark(modelIds, suiteName, suite, config, progressCallback) {
+  async runBenchmark(modelIds, suiteName, suite, config, progressCallback, options = { returnImmediately: false }) {
     const runId = uuidv4();
     const benchmarkLogger = createBenchmarkLogger(runId);
     
@@ -290,128 +314,195 @@ class BenchmarkEngine {
       suite: suiteName 
     });
 
+    // Initialize running state
     this.runningBenchmarks.set(runId, {
       id: runId,
       status: 'running',
       progress: 0
     });
 
-    try {
-      // Collect hardware info
-      const hardwareInfo = await this.getHardwareInfo();
+    const runTask = async () => {
+      try {
+        // Collect hardware info
+        const hardwareInfo = await this.getHardwareInfo();
 
-      // Save benchmark run
-      const run = {
-        id: runId,
-        suite_name: suiteName,
-        model_ids: modelIds,
-        config,
-        hardware_info: hardwareInfo,
-        status: 'running',
-        started_at: Date.now()
-      };
-      
-      storage.saveBenchmarkRun(run);
+        // Save benchmark run
+        const run = {
+          id: runId,
+          suite_name: suiteName,
+          model_ids: modelIds,
+          config,
+          hardware_info: hardwareInfo,
+          status: 'running',
+          started_at: Date.now()
+        };
+        
+        storage.saveBenchmarkRun(run);
 
-      const allResults = [];
+        const allResults = [];
+        const totalTasks = modelIds.length * (suite.scenarios?.length || 0);
+        let completedTasks = 0;
 
-      // Run benchmarks for each model
-      for (const modelId of modelIds) {
-        benchmarkLogger.info('Benchmarking model', { modelId });
+        // Helper to ensure model is loaded and healthy
+        const ensureModelReady = async (modelId, model) => {
+          // Try cache first
+          let modelInfo = orchestrator.getLoadedModelInfo(modelId);
 
-        // Get model from storage to get alias
-        const model = storage.getModel(modelId);
-        if (!model) {
-          benchmarkLogger.error('Model not found in storage', { modelId });
-          storage.saveLog('benchmark', runId, 'error', 
-            `Model ${modelId} not found in storage`
-          );
-          continue;
-        }
+          if (!modelInfo) {
+            benchmarkLogger.warn('Model not loaded in cache, attempting to load', { modelId, alias: model.alias, model_id: model.model_id });
+            try {
+              modelInfo = await orchestrator.loadModel(modelId, model.alias || model.model_id);
+            } catch (err) {
+              benchmarkLogger.error('Auto-load failed', { modelId, error: err.message });
+              storage.saveLog('benchmark', runId, 'error', `Auto-load failed for ${model.alias || model.model_id}: ${err.message}`);
+              return null;
+            }
+          }
 
-        // Check model health using alias (not our internal ID)
-        const health = await orchestrator.checkModelHealth(model.alias);
-        if (!health.healthy) {
-          benchmarkLogger.error('Model service unhealthy', { modelId, alias: model.alias, health });
-          storage.saveLog('benchmark', runId, 'error', 
-            `Model ${model.alias} (${modelId}) service is unhealthy: ${health.error || health.status}`
-          );
-          continue;
-        }
+          // Health check
+          let health = await orchestrator.checkModelHealth(modelInfo.alias || model.alias || model.model_id);
+          if (!health.healthy) {
+            benchmarkLogger.warn('Model unhealthy, retrying load', { modelId, alias: modelInfo.alias, health });
+            try {
+              await orchestrator.loadModel(modelId, model.alias || model.model_id);
+              health = await orchestrator.checkModelHealth(modelInfo.alias || model.alias || model.model_id);
+            } catch (err) {
+              benchmarkLogger.error('Reload failed', { modelId, error: err.message });
+            }
+          }
 
-        // Run each scenario in the suite
-        for (const scenario of suite.scenarios) {
-          try {
-            const result = await this.runScenario(
-              modelId, 
-              scenario, 
-              config,
-              progressCallback
-            );
+          if (!health.healthy) {
+            storage.saveLog('benchmark', runId, 'error', `Model ${modelInfo.alias || model.alias} (${modelId}) service is unhealthy: ${health.error || health.status}`);
+            return null;
+          }
 
-            // Save result
-            const resultRecord = {
-              id: uuidv4(),
-              run_id: runId,
-              model_id: modelId,
-              scenario: scenario.name,
-              ...result.aggregated,
-              raw_data: result.raw
-            };
+          return modelInfo;
+        };
 
-            storage.saveBenchmarkResult(resultRecord);
-            allResults.push(resultRecord);
+        // Helper to update progress
+        const updateProgress = () => {
+          const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+          this.runningBenchmarks.set(runId, {
+            id: runId,
+            status: 'running',
+            progress
+          });
+          if (progressCallback) {
+            progressCallback({ runId, progress });
+          }
+        };
 
-          } catch (error) {
-            benchmarkLogger.error('Scenario failed', { 
-              modelId, 
-              scenario: scenario.name,
-              error: error.message 
-            });
-            
+        // Run benchmarks for each model
+        for (const modelId of modelIds) {
+          benchmarkLogger.info('Benchmarking model', { modelId });
+
+          // Get model from storage to get alias
+          const model = storage.getModel(modelId);
+          if (!model) {
+            benchmarkLogger.error('Model not found in storage', { modelId });
             storage.saveLog('benchmark', runId, 'error', 
-              `Scenario ${scenario.name} failed for ${modelId}: ${error.message}`
+              `Model ${modelId} not found in storage`
             );
+            continue;
+          }
+
+          const modelInfo = await ensureModelReady(modelId, model);
+          if (!modelInfo) {
+            benchmarkLogger.error('Model not ready, skipping', { modelId, alias: model.alias });
+            continue;
+          }
+
+          benchmarkLogger.info('Model ready', {
+            modelId,
+            alias: modelInfo.alias,
+            endpoint: orchestrator.getEndpoint()
+          });
+
+          // Run each scenario in the suite
+          for (const scenario of suite.scenarios) {
+            try {
+              const result = await this.runScenario(
+                modelId, 
+                scenario, 
+                config,
+                progressCallback
+              );
+
+              // Save result
+              const resultRecord = {
+                id: uuidv4(),
+                run_id: runId,
+                model_id: modelId,
+                scenario: scenario.name,
+                ...result.aggregated,
+                raw_data: result.raw
+              };
+
+              storage.saveBenchmarkResult(resultRecord);
+              allResults.push(resultRecord);
+
+            } catch (error) {
+              benchmarkLogger.error('Scenario failed', { 
+                modelId, 
+                scenario: scenario.name,
+                error: error.message 
+              });
+              
+              storage.saveLog('benchmark', runId, 'error', 
+                `Scenario ${scenario.name} failed for ${modelId}: ${error.message}`
+              );
+            } finally {
+              completedTasks += 1;
+              updateProgress();
+            }
           }
         }
+
+        // Update run as completed
+        storage.updateBenchmarkRun(runId, {
+          status: 'completed',
+          completed_at: Date.now()
+        });
+
+        this.runningBenchmarks.set(runId, {
+          id: runId,
+          status: 'completed',
+          progress: 100
+        });
+
+        benchmarkLogger.info('Benchmark run completed', { runId, resultsCount: allResults.length });
+
+        return {
+          runId,
+          results: allResults
+        };
+
+      } catch (error) {
+        benchmarkLogger.error('Benchmark run failed', { runId, error: error.message });
+        
+        storage.updateBenchmarkRun(runId, {
+          status: 'failed',
+          completed_at: Date.now()
+        });
+
+        this.runningBenchmarks.set(runId, {
+          id: runId,
+          status: 'failed',
+          progress: 0,
+          error: error.message
+        });
+
+        throw error;
       }
+    };
 
-      // Update run as completed
-      storage.updateBenchmarkRun(runId, {
-        status: 'completed',
-        completed_at: Date.now()
-      });
-
-      this.runningBenchmarks.set(runId, {
-        id: runId,
-        status: 'completed',
-        progress: 100
-      });
-
-      benchmarkLogger.info('Benchmark run completed', { runId, resultsCount: allResults.length });
-
-      return {
-        runId,
-        results: allResults
-      };
-
-    } catch (error) {
-      benchmarkLogger.error('Benchmark run failed', { runId, error: error.message });
-      
-      storage.updateBenchmarkRun(runId, {
-        status: 'failed',
-        completed_at: Date.now()
-      });
-
-      this.runningBenchmarks.set(runId, {
-        id: runId,
-        status: 'failed',
-        progress: 0,
-        error: error.message
-      });
-
-      throw error;
+    if (options.returnImmediately) {
+      // Fire and forget
+      runTask();
+      return { runId };
     }
+
+    return await runTask();
   }
 
   /**
