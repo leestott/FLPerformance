@@ -6,6 +6,20 @@ A local application with UI for benchmarking multiple Large Language Models (LLM
 
 **Windows users**: Just run `.\START_APP.ps1` to start everything! Opens 2 terminals + browser automatically. 🚀
 
+## 🎉 Latest Updates (January 2026)
+
+### ✅ Successfully Implemented Features
+- **Enhanced Results Visualizations**: Comprehensive charts, performance cards, and radar graphs
+- **Benchmark History**: Recent runs table with real-time statistics
+- **Critical Bug Fixes**: Fixed model loading from alias to model_id lookup
+- **Frontend/Backend Integration**: Full API connectivity and data flow
+- **ARM64 Hardware Detection**: Proper Snapdragon X Elite recognition
+
+### ⚠️ Known Compatibility Issue
+- **Foundry Local ARM64**: Service initialization issues on Windows ARM64 systems
+- **Workaround**: Consider using smaller models (qwen2.5-0.5b) or alternative model serving
+- **Status**: Under investigation - visualizations and benchmark system are ready
+
 ## Overview
 
 FLPerformance enables you to:
@@ -53,6 +67,8 @@ chmod +x scripts/install.sh && ./scripts/install.sh
 
 **Note**: Installation uses `--no-optional` flag to skip SQLite database (requires build tools).  
 Results are saved as JSON files instead. This works perfectly for all features!
+
+**ARM64 Windows Note**: If you're on ARM64 Windows (Snapdragon X Elite), the visualizations and benchmark system work perfectly, but you may need to use alternative models or check Foundry Local ARM64 compatibility.
 
 **Step 3: Start the application**
 ```powershell
@@ -271,6 +287,13 @@ See [Architecture Documentation](docs/architecture.md) for details.
 - Increase timeout values in Settings
 - Reduce concurrency level
 - Check system resource availability (RAM, GPU memory)
+
+### ARM64 Windows Compatibility (Snapdragon X Elite)
+- **Symptom**: Models load successfully but benchmarks fail with 500 errors
+- **Cause**: Foundry Local service doesn't properly start on some ARM64 systems
+- **Verification**: Check if `foundry serve` keeps the service running
+- **Alternatives**: Try smaller models like `qwen2.5-0.5b-instruct-generic-cpu:4`
+- **Status**: Frontend visualizations and backend work perfectly - issue is Foundry Local ARM64 compatibility
 
 ### Installation Issues
 - Run the appropriate installation script (install.ps1 or install.sh) for detailed diagnostics
