@@ -251,7 +251,7 @@ class BenchmarkEngine {
         }
         results.tokenCounts.push(metrics.tokens);
 
-        // Collect inter-token delays for TTOT calculation
+        // Collect inter-token delays for TPOT calculation
         if (metrics.interTokenDelays.length > 0) {
           results.allInterTokenDelays.push(...metrics.interTokenDelays);
         }
