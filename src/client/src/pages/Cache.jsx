@@ -174,7 +174,9 @@ function Cache() {
               type="text"
               value={customPath}
               onChange={(e) => setCustomPath(e.target.value)}
-              placeholder="/path/to/your/custom/cache"
+              placeholder={window.navigator.platform.toLowerCase().includes('win')
+                ? "C:\\Users\\YourName\\custom-models"
+                : "/path/to/your/custom/cache"}
               style={{
                 width: '100%',
                 padding: '0.5rem',

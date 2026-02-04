@@ -101,6 +101,7 @@ You'll see:
 - **Models** tab - Add and load AI models
 - **Benchmarks** tab - Run performance tests
 - **Results** tab - View comparison charts
+- **Cache** tab - Switch to custom model cache directories
 
 ### First Time Setup (In the UI)
 
@@ -109,6 +110,12 @@ You'll see:
 3. Click **Load Model** (downloads ~2GB, takes 2-5 minutes)
 4. Go to **Benchmarks** → Select your model → **Run Benchmark**
 5. View results in **Results** tab
+
+### Custom Models (Optional)
+- Use **Cache** tab to switch Foundry cache directory
+- Point to directories containing custom ONNX models
+- Custom models appear in Models dropdown with 🔧 badge
+- Benchmark custom models same as catalog models
 
 ---
 
@@ -247,6 +254,7 @@ FLPerformance/
 - Unified service management using foundry-local-sdk
 - Add/remove models from Foundry Local catalog
 - Load multiple models simultaneously in a single service
+- **Custom Model Support**: Benchmark custom ONNX models from alternate cache directories via Cache tab
 - Monitor model health and status in real-time
 - Automatic model download and caching
 

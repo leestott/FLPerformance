@@ -1,5 +1,6 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import path from 'path';
 import logger from './logger.js';
 
 const execPromise = promisify(exec);
@@ -52,21 +53,26 @@ class CacheManager {
 
   /**
    * Switch to a different cache directory
-   * @param {string} path - Path to cache directory, or "default" to restore original
+   * @param {string} cachePath - Path to cache directory, or "default" to restore original
    */
-  async switchCache(path) {
+  async switchCache(cachePath) {
     try {
+      let targetPath = cachePath;
+
       // Handle "default" keyword
-      if (path === 'default') {
+      if (targetPath === 'default') {
         if (!this.defaultCachePath) {
           // Try to get it first
           await this.getCurrentLocation();
         }
-        path = this.defaultCachePath;
+        targetPath = this.defaultCachePath;
       }
 
-      logger.info('Switching cache directory', { path });
-      const { stdout, stderr } = await execPromise(`foundry cache cd "${path}"`);
+      // Normalize path for cross-platform compatibility (handles Windows paths)
+      const normalizedPath = path.normalize(targetPath);
+
+      logger.info('Switching cache directory', { targetPath, normalizedPath });
+      const { stdout, stderr } = await execPromise(`foundry cache cd "${normalizedPath}"`);
 
       if (stderr && !stderr.includes('Service is Started')) {
         logger.warn('Cache switch command stderr', { stderr });
