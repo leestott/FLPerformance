@@ -72,7 +72,7 @@ class CacheManager {
       const normalizedPath = path.normalize(targetPath);
 
       logger.info('Switching cache directory', { targetPath, normalizedPath });
-      const { stdout, stderr } = await execPromise(`foundry cache cd "${normalizedPath}"`);
+      const { stderr } = await execPromise(`foundry cache cd "${normalizedPath}"`);
 
       if (stderr && !stderr.includes('Service is Started')) {
         logger.warn('Cache switch command stderr', { stderr });
