@@ -215,11 +215,29 @@ function Results() {
                   onChange={(e) => setSelectedRun(e.target.value)}
                   style={{ maxWidth: '600px' }}
                 >
-                  {runs.map(run => (
-                    <option key={run.id} value={run.id}>
-                      {run.suite_name} - {new Date(run.started_at).toLocaleString()} ({run.status})
-                    </option>
-                  ))}
+                  {runs.map(run => {
+                    const modelList = run.model_aliases && run.model_aliases.length > 0
+                      ? run.model_aliases.join(', ')
+                      : 'Unknown models';
+                    const truncatedModels = modelList.length > 40
+                      ? modelList.substring(0, 40) + '...'
+                      : modelList;
+                    const dateStr = new Date(run.started_at).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    });
+                    const statusBadge = run.status === 'completed' ? '✓' :
+                                       run.status === 'running' ? '⏳' :
+                                       run.status === 'failed' ? '✗' : '';
+
+                    return (
+                      <option key={run.id} value={run.id}>
+                        [{truncatedModels}] - {run.suite_name} - {dateStr} {statusBadge}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               <div>

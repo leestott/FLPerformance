@@ -269,22 +269,39 @@ function Models() {
                   value={newModel.model_id}
                   onChange={(e) => {
                     const selected = availableModels.find(m => m.id === e.target.value);
-                    setNewModel({ 
-                      alias: selected?.alias || e.target.value, 
-                      model_id: e.target.value 
+                    setNewModel({
+                      alias: selected?.alias || e.target.value,
+                      model_id: e.target.value
                     });
                   }}
                   required
                 >
                   <option value="">Select a model...</option>
-                  {availableModels.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.description || m.id}
-                    </option>
-                  ))}
+
+                  {/* Catalog Models */}
+                  {availableModels.filter(m => !m.isCustom).length > 0 && (
+                    <optgroup label="Catalog Models">
+                      {availableModels.filter(m => !m.isCustom).map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.description || m.id}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Custom Models */}
+                  {availableModels.filter(m => m.isCustom).length > 0 && (
+                    <optgroup label="🔧 Custom Models">
+                      {availableModels.filter(m => m.isCustom).map(m => (
+                        <option key={m.id} value={m.id}>
+                          🔧 {m.description || m.id}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <small style={{ color: '#7f8c8d', marginTop: '0.25rem', display: 'block' }}>
-                  Or enter a custom model ID manually in the alias field
+                  Custom models from cache directory are marked with 🔧. Visit the Cache tab to manage.
                 </small>
               </div>
               <div style={{ marginTop: '1.5rem' }}>

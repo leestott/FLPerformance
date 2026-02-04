@@ -7,6 +7,7 @@ import logger from './logger.js';
 import storage from './storage.js';
 import orchestrator from './orchestrator.js';
 import benchmark from './benchmark.js';
+import cacheManager from './cacheManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -427,7 +428,29 @@ app.post('/api/benchmarks/run', async (req, res) => {
 app.get('/api/benchmarks/runs', async (req, res) => {
   try {
     const runs = storage.getAllBenchmarkRuns();
-    res.json({ runs });
+
+    // Enrich runs with model aliases for better UX
+    const enrichedRuns = runs.map(run => {
+      const modelAliases = [];
+      if (run.model_ids && Array.isArray(run.model_ids)) {
+        run.model_ids.forEach(modelId => {
+          const model = storage.getModel(modelId);
+          if (model) {
+            modelAliases.push(model.alias || model.model_id || modelId);
+          } else {
+            // If model was deleted, just show the ID
+            modelAliases.push(modelId);
+          }
+        });
+      }
+
+      return {
+        ...run,
+        model_aliases: modelAliases
+      };
+    });
+
+    res.json({ runs: enrichedRuns });
   } catch (error) {
     logger.error('Failed to get benchmark runs', { error: error.message });
     res.status(500).json({ error: error.message });
@@ -561,6 +584,71 @@ app.get('/api/benchmarks/runs/:id/logs', async (req, res) => {
     res.json({ logs });
   } catch (error) {
     logger.error('Failed to get logs', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// Cache API
+// ============================================================================
+
+/**
+ * GET /api/cache/location
+ * Get current cache directory location
+ */
+app.get('/api/cache/location', async (req, res) => {
+  try {
+    const location = await cacheManager.getCurrentLocation();
+    const defaultPath = cacheManager.getDefaultPath();
+
+    res.json({
+      location,
+      defaultPath,
+      isDefault: location === defaultPath
+    });
+  } catch (error) {
+    logger.error('Failed to get cache location', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/cache/switch
+ * Switch to a different cache directory
+ * Body: { path: "/custom/path" } or { path: "default" }
+ */
+app.post('/api/cache/switch', async (req, res) => {
+  try {
+    const { path } = req.body;
+
+    if (!path) {
+      return res.status(400).json({ error: 'path is required' });
+    }
+
+    const result = await cacheManager.switchCache(path);
+    logger.info('Cache switched successfully', result);
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Failed to switch cache', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/cache/models
+ * List models in current cache directory
+ */
+app.get('/api/cache/models', async (req, res) => {
+  try {
+    const models = await cacheManager.listCacheModels();
+
+    res.json({
+      models,
+      count: models.length
+    });
+  } catch (error) {
+    logger.error('Failed to list cache models', { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });

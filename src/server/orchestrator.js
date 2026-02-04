@@ -2,6 +2,7 @@ import { FoundryLocalManager } from 'foundry-local-sdk';
 import OpenAI from 'openai';
 import logger, { createServiceLogger } from './logger.js';
 import storage from './storage.js';
+import cacheManager from './cacheManager.js';
 
 class FoundryLocalOrchestrator {
   constructor() {
@@ -74,39 +75,86 @@ class FoundryLocalOrchestrator {
   }
 
   /**
-   * List available models from catalog
+   * List available models from catalog and cache
    */
   async listAvailableModels() {
     await this.initialize();
-    
+
     try {
-      const models = await this.manager.listCatalogModels();
-      logger.info('Catalog models fetched', { count: models.length });
-      
-      // Transform to expected format
-      return models.map(m => ({
-        id: m.id,
-        alias: m.alias,
-        description: `${m.alias} (${m.deviceType})`,
-        version: m.version,
-        deviceType: m.deviceType,
-        executionProvider: m.executionProvider,
-        modelSize: m.modelSize
-      }));
-      
+      // Get catalog models from SDK
+      const catalogModels = await this.manager.listCatalogModels();
+      logger.info('Catalog models fetched', { count: catalogModels.length });
+
+      // Get models from current cache
+      const cacheModels = await cacheManager.listCacheModels();
+      logger.info('Cache models fetched', { count: cacheModels.length });
+
+      // Merge and mark custom models
+      const mergedModels = this.mergeCatalogAndCache(catalogModels, cacheModels);
+
+      logger.info('Models merged', {
+        catalog: catalogModels.length,
+        cache: cacheModels.length,
+        total: mergedModels.length
+      });
+
+      return mergedModels;
+
     } catch (error) {
-      logger.error('Failed to list catalog models', { error: error.message });
-      
+      logger.error('Failed to list models', { error: error.message });
+
       // Return fallback list
       logger.warn('Returning fallback model list');
       return [
-        { id: 'phi-3.5-mini', alias: 'phi-3.5-mini', description: 'Phi-3.5 Mini' },
-        { id: 'phi-4-mini', alias: 'phi-4-mini', description: 'Phi-4 Mini' },
-        { id: 'qwen2.5-0.5b', alias: 'qwen2.5-0.5b', description: 'Qwen 2.5 0.5B' },
-        { id: 'llama-3.2-1b', alias: 'llama-3.2-1b', description: 'Llama 3.2 1B' },
-        { id: 'llama-3.2-3b', alias: 'llama-3.2-3b', description: 'Llama 3.2 3B' }
+        { id: 'phi-3.5-mini', alias: 'phi-3.5-mini', description: 'Phi-3.5 Mini', isCustom: false },
+        { id: 'phi-4-mini', alias: 'phi-4-mini', description: 'Phi-4 Mini', isCustom: false },
+        { id: 'qwen2.5-0.5b', alias: 'qwen2.5-0.5b', description: 'Qwen 2.5 0.5B', isCustom: false },
+        { id: 'llama-3.2-1b', alias: 'llama-3.2-1b', description: 'Llama 3.2 1B', isCustom: false },
+        { id: 'llama-3.2-3b', alias: 'llama-3.2-3b', description: 'Llama 3.2 3B', isCustom: false }
       ];
     }
+  }
+
+  /**
+   * Merge catalog and cache models, marking custom models
+   */
+  mergeCatalogAndCache(catalogModels, cacheModels) {
+    // Transform catalog models
+    const transformed = catalogModels.map(m => ({
+      id: m.id,
+      alias: m.alias,
+      description: `${m.alias} (${m.deviceType})`,
+      version: m.version,
+      deviceType: m.deviceType,
+      executionProvider: m.executionProvider,
+      modelSize: m.modelSize,
+      isCustom: false
+    }));
+
+    // Create a set of catalog model IDs for quick lookup
+    const catalogIds = new Set(catalogModels.map(m => m.id));
+    const catalogAliases = new Set(catalogModels.map(m => m.alias));
+
+    // Add cache models that aren't in the catalog (custom models)
+    for (const cacheModel of cacheModels) {
+      // Check if this model is not in the catalog
+      const isCustom = !catalogIds.has(cacheModel.id) && !catalogAliases.has(cacheModel.alias);
+
+      if (isCustom) {
+        transformed.push({
+          id: cacheModel.id,
+          alias: cacheModel.alias,
+          description: `${cacheModel.alias} (Custom)`,
+          version: null,
+          deviceType: 'Custom',
+          executionProvider: null,
+          modelSize: null,
+          isCustom: true
+        });
+      }
+    }
+
+    return transformed;
   }
 
   /**
@@ -114,11 +162,32 @@ class FoundryLocalOrchestrator {
    */
   async listLoadedModels() {
     await this.initialize();
-    
+
     try {
-      const models = await this.manager.listLoadedModels();
-      logger.info('Loaded models fetched', { count: models.length });
-      return models;
+      // Get models from SDK (won't include CLI-loaded custom models)
+      const sdkModels = await this.manager.listLoadedModels();
+
+      // Also check our internal cache for CLI-loaded models
+      const cachedModels = Array.from(this.loadedModels.values());
+
+      // Merge both lists (SDK models + CLI-loaded models)
+      const allModels = [...sdkModels];
+
+      // Add cached models that aren't in SDK list (these are CLI-loaded)
+      for (const cached of cachedModels) {
+        const existsInSdk = sdkModels.some(m => m.id === cached.id || m.alias === cached.alias);
+        if (!existsInSdk) {
+          allModels.push(cached);
+        }
+      }
+
+      logger.info('Loaded models fetched', {
+        count: allModels.length,
+        fromSdk: sdkModels.length,
+        fromCache: cachedModels.length
+      });
+
+      return allModels;
     } catch (error) {
       logger.error('Failed to list loaded models', { error: error.message });
       // Return from cache
@@ -179,20 +248,27 @@ class FoundryLocalOrchestrator {
    */
   async loadModel(modelId, alias, device = null, ttl = 600) {
     await this.initialize();
-    
+
     const serviceLogger = createServiceLogger(alias);
-    
+
     try {
       serviceLogger.info('Loading model', { modelId, alias, device, ttl });
-      
-      // Try to load model - if not downloaded, it will fail
+
+      // First, try to load the model directly with SDK
+      // This works for catalog models and MIGHT work for cached models
       try {
         const modelInfo = await this.manager.loadModel(alias, device, ttl);
-        
-        // Store model info in cache (key by our model ID, not SDK's)
+
+        serviceLogger.info('Model loaded via SDK', {
+          id: modelId,
+          foundry_id: modelInfo.id,
+          alias: modelInfo.alias
+        });
+
+        // Store model info in cache
         this.loadedModels.set(modelId, modelInfo);
-        
-        // Update existing model in storage with SDK details
+
+        // Update model in storage
         const model = storage.getModel(modelId);
         if (model) {
           const updatedModel = {
@@ -211,22 +287,84 @@ class FoundryLocalOrchestrator {
           };
           storage.saveModel(updatedModel);
         }
-        
-        serviceLogger.info('Model loaded', {
-          id: modelId,
-          foundry_id: modelInfo.id,
-          alias: modelInfo.alias,
-          deviceType: modelInfo.deviceType,
-          executionProvider: modelInfo.executionProvider
-        });
-        
+
         return modelInfo;
-        
-      } catch (loadError) {
-        // Check if error is about model not being downloaded
-        if (loadError.message && loadError.message.includes('not been downloaded')) {
+      } catch (sdkError) {
+        // If SDK fails, check if it's because model is not in catalog
+        // For custom models, we'll use CLI as fallback
+        if (sdkError.message && sdkError.message.includes('not found in')) {
+          serviceLogger.info('Model not in catalog, attempting CLI fallback for custom model', { alias });
+
+          // Use CLI to load the custom model
+          const { exec } = await import('child_process');
+          const { promisify } = await import('util');
+          const execPromise = promisify(exec);
+
+          try {
+            serviceLogger.info('Loading custom model via CLI', { alias, ttl });
+
+            const { stdout, stderr } = await execPromise(
+              `foundry model load "${alias}" --ttl ${ttl}`,
+              { timeout: 30000 } // 30 second timeout
+            );
+
+            if (stderr && !stderr.includes('successfully')) {
+              throw new Error(`CLI error: ${stderr}`);
+            }
+
+            serviceLogger.info('Custom model loaded via CLI', { stdout });
+
+            // Create mock modelInfo for custom models
+            const modelInfo = {
+              id: alias,
+              alias: alias,
+              version: null,
+              deviceType: 'Custom',
+              executionProvider: 'Custom',
+              modelSize: null
+            };
+
+            // Store model info in cache
+            this.loadedModels.set(modelId, modelInfo);
+
+            // Update model in storage
+            const model = storage.getModel(modelId);
+            if (model) {
+              const updatedModel = {
+                ...model,
+                status: 'running',
+                endpoint: this.manager.endpoint,
+                foundry_id: alias,
+                foundry_alias: alias,
+                version: null,
+                deviceType: 'Custom',
+                executionProvider: 'Custom',
+                modelSize: null,
+                last_error: null,
+                last_heartbeat: Date.now(),
+                updated_at: Date.now()
+              };
+              storage.saveModel(updatedModel);
+            }
+
+            serviceLogger.info('Custom model loaded and registered', {
+              id: modelId,
+              alias: modelInfo.alias
+            });
+
+            return modelInfo;
+          } catch (cliError) {
+            serviceLogger.error('CLI fallback failed', {
+              error: cliError.message,
+              stdout: cliError.stdout,
+              stderr: cliError.stderr
+            });
+            throw new Error(`Failed to load custom model via CLI: ${cliError.message}`);
+          }
+        } else if (sdkError.message && sdkError.message.includes('not been downloaded')) {
+          // This is a catalog model that needs to be downloaded first
           serviceLogger.info('Model not downloaded, downloading now...', { alias });
-          
+
           // Update status to downloading
           const model = storage.getModel(modelId);
           if (model) {
@@ -237,19 +375,19 @@ class FoundryLocalOrchestrator {
               updated_at: Date.now()
             });
           }
-          
+
           // Download the model first
           await this.downloadModel(alias, device);
-          
+
           serviceLogger.info('Download complete, loading model...', { alias });
-          
+
           // Now try loading again
           const modelInfo = await this.manager.loadModel(alias, device, ttl);
-          
+
           // Store model info in cache
           this.loadedModels.set(modelId, modelInfo);
-          
-          // Update existing model in storage with SDK details
+
+          // Update model in storage
           if (model) {
             const updatedModel = {
               ...model,
@@ -267,17 +405,17 @@ class FoundryLocalOrchestrator {
             };
             storage.saveModel(updatedModel);
           }
-          
+
           serviceLogger.info('Model loaded after download', {
             id: modelId,
             foundry_id: modelInfo.id,
             alias: modelInfo.alias
           });
-          
+
           return modelInfo;
         } else {
           // Different error, rethrow
-          throw loadError;
+          throw sdkError;
         }
       }
       
@@ -304,22 +442,54 @@ class FoundryLocalOrchestrator {
    */
   async unloadModel(modelId, alias, device = null, force = false) {
     await this.initialize();
-    
+
     const serviceLogger = createServiceLogger(alias);
-    
+
     try {
       serviceLogger.info('Unloading model', { modelId, alias, device, force });
-      
+
       // Get model info to find foundry alias
       const modelInfo = this.loadedModels.get(modelId);
       const foundryAlias = modelInfo?.alias || alias;
-      
-      // Unload using SDK
-      await this.manager.unloadModel(foundryAlias, device, force);
-      
+
+      // Try to unload using SDK first
+      try {
+        await this.manager.unloadModel(foundryAlias, device, force);
+        serviceLogger.info('Model unloaded via SDK', { foundryAlias });
+      } catch (sdkError) {
+        // If SDK fails, it might be a custom model - use CLI fallback
+        if (sdkError.message && (sdkError.message.includes('not found') || sdkError.message.includes('not loaded'))) {
+          serviceLogger.info('Attempting CLI fallback for unload', { foundryAlias });
+
+          const { exec } = await import('child_process');
+          const { promisify } = await import('util');
+          const execPromise = promisify(exec);
+
+          try {
+            const { stdout, stderr } = await execPromise(
+              `foundry model unload "${foundryAlias}"`,
+              { timeout: 10000 }
+            );
+
+            if (stderr && !stderr.includes('successfully')) {
+              throw new Error(`CLI unload error: ${stderr}`);
+            }
+
+            serviceLogger.info('Model unloaded via CLI', { stdout });
+          } catch (cliError) {
+            // Model might not be loaded, which is okay
+            serviceLogger.warn('CLI unload failed (model may not be loaded)', {
+              error: cliError.message
+            });
+          }
+        } else {
+          throw sdkError;
+        }
+      }
+
       // Remove from cache
       this.loadedModels.delete(modelId);
-      
+
       // Update model status
       const model = storage.getModel(modelId);
       if (model) {
