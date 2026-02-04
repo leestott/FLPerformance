@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { modelsAPI } from '../utils/api';
 
 function Models() {
@@ -12,6 +12,13 @@ function Models() {
   const [selectedModel, setSelectedModel] = useState(null);
   const [logs, setLogs] = useState([]);
   const [newModel, setNewModel] = useState({ alias: '', model_id: '' });
+
+  // Memoize model filtering to avoid recalculation on every render
+  const { catalogModels, customModels } = useMemo(() => {
+    const catalog = availableModels.filter(m => !m.isCustom);
+    const custom = availableModels.filter(m => m.isCustom);
+    return { catalogModels: catalog, customModels: custom };
+  }, [availableModels]);
 
   useEffect(() => {
     loadModels();
@@ -269,22 +276,39 @@ function Models() {
                   value={newModel.model_id}
                   onChange={(e) => {
                     const selected = availableModels.find(m => m.id === e.target.value);
-                    setNewModel({ 
-                      alias: selected?.alias || e.target.value, 
-                      model_id: e.target.value 
+                    setNewModel({
+                      alias: selected?.alias || e.target.value,
+                      model_id: e.target.value
                     });
                   }}
                   required
                 >
                   <option value="">Select a model...</option>
-                  {availableModels.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.description || m.id}
-                    </option>
-                  ))}
+
+                  {/* Catalog Models */}
+                  {catalogModels.length > 0 && (
+                    <optgroup label="Catalog Models">
+                      {catalogModels.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.description || m.id}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Custom Models */}
+                  {customModels.length > 0 && (
+                    <optgroup label="🔧 Custom Models">
+                      {customModels.map(m => (
+                        <option key={m.id} value={m.id}>
+                          🔧 {m.description || m.id}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <small style={{ color: '#7f8c8d', marginTop: '0.25rem', display: 'block' }}>
-                  Or enter a custom model ID manually in the alias field
+                  Custom models from cache directory are marked with 🔧. Visit the Cache tab to manage.
                 </small>
               </div>
               <div style={{ marginTop: '1.5rem' }}>
