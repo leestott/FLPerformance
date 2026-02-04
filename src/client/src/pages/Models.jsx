@@ -301,7 +301,7 @@ function Models() {
                     <optgroup label="🔧 Custom Models">
                       {customModels.map(m => (
                         <option key={m.id} value={m.id}>
-                          🔧 {m.description || m.id}
+                          {m.description || m.id}
                         </option>
                       ))}
                     </optgroup>

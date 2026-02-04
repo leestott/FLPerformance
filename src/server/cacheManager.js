@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import fs from 'fs';
 import logger from './logger.js';
 
 const execFilePromise = promisify(execFile);
@@ -67,6 +68,23 @@ class CacheManager {
     // Normalize and resolve to absolute path
     const normalized = path.resolve(cachePath);
 
+    // Resolve symlinks to get the real path
+    let realPath;
+    try {
+      realPath = fs.realpathSync(normalized);
+    } catch (error) {
+      // If path doesn't exist yet, use the normalized path
+      // but verify parent directories
+      const parentDir = path.dirname(normalized);
+      try {
+        realPath = fs.realpathSync(parentDir);
+        realPath = path.join(realPath, path.basename(normalized));
+      } catch (parentError) {
+        // Parent doesn't exist either, use normalized
+        realPath = normalized;
+      }
+    }
+
     // Additional security: prevent access to sensitive system directories
     const sensitivePatterns = [
       /^\/etc($|\/)/i,
@@ -82,12 +100,12 @@ class CacheManager {
     ];
 
     for (const pattern of sensitivePatterns) {
-      if (pattern.test(normalized)) {
+      if (pattern.test(realPath)) {
         throw new Error('Cache path cannot point to system directories');
       }
     }
 
-    return normalized;
+    return realPath;
   }
 
   /**

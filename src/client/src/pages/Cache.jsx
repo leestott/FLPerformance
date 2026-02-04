@@ -32,7 +32,7 @@ function Cache() {
       setCacheModels(modelsData.models);
 
     } catch (err) {
-      setError(`Failed to load cache info: ${err.message}`);
+      setError(`Failed to load cache info: ${err.response?.data?.error || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -59,7 +59,7 @@ function Cache() {
       setCacheModels(modelsData.models);
 
     } catch (err) {
-      setError(`Failed to switch cache: ${err.message}`);
+      setError(`Failed to switch cache: ${err.response?.data?.error || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -81,7 +81,7 @@ function Cache() {
       setCacheModels(modelsData.models);
 
     } catch (err) {
-      setError(`Failed to restore default cache: ${err.message}`);
+      setError(`Failed to restore default cache: ${err.response?.data?.error || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -238,8 +238,8 @@ function Cache() {
                 </tr>
               </thead>
               <tbody>
-                {cacheModels.map((model, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                {cacheModels.map((model) => (
+                  <tr key={`${model.alias}-${model.id}`} style={{ borderBottom: '1px solid #eee' }}>
                     <td style={{ padding: '0.75rem' }}>
                       <code style={{ fontSize: '0.9rem' }}>{model.alias}</code>
                     </td>

@@ -149,7 +149,7 @@ class FoundryLocalOrchestrator {
         transformed.push({
           id: cacheModel.id,
           alias: cacheModel.alias,
-          description: `🔧 ${cacheModel.description || cacheModel.alias}`,
+          description: cacheModel.description || cacheModel.alias,
           source: 'cache',
           isCustom: true
         });

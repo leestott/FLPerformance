@@ -432,7 +432,7 @@ app.get('/api/benchmarks/runs', async (req, res) => {
     // Enrich runs with model aliases for better UX
     // Optimize by loading all models once instead of N+1 queries
     const allModels = storage.getAllModels();
-    const modelMap = new Map(allModels.map(m => [m.model_id, m]));
+    const modelMap = new Map(allModels.map(m => [m.id, m]));
 
     const enrichedRuns = runs.map(run => {
       const modelAliases = [];
