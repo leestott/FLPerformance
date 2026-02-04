@@ -196,11 +196,12 @@ class CacheManager {
       const lines = stdout.split('\n');
 
       for (const line of lines) {
-        // Skip header lines and empty lines
-        if (!line.includes('💾') || line.includes('Alias')) continue;
+        const trimmed = line.trim();
+        // Skip non-model lines (no leading 💾) and empty lines
+        if (!trimmed.startsWith('💾')) continue;
 
         // Parse model line: "💾 alias                    model_id"
-        const parts = line.trim().split(/\s{2,}/); // Split by 2+ spaces
+        const parts = trimmed.split(/\s{2,}/); // Split by 2+ spaces
         if (parts.length >= 2) {
           // Format after split: ["💾 alias", "model_id"]
           // Remove emoji from first part
