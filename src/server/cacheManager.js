@@ -156,7 +156,8 @@ class CacheManager {
    */
   async checkCLIAvailable() {
     try {
-      await execPromise('which foundry');
+      const command = process.platform === 'win32' ? 'where foundry' : 'which foundry';
+      await execPromise(command);
       return true;
     } catch (error) {
       logger.error('Foundry CLI not found in PATH');
