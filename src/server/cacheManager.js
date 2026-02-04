@@ -56,17 +56,23 @@ class CacheManager {
    * Validate cache path to prevent command injection and path traversal
    */
   validateCachePath(cachePath) {
-    if (!cachePath || typeof cachePath !== 'string') {
+    if (typeof cachePath !== 'string') {
+      throw new Error('Cache path must be a non-empty string');
+    }
+
+    const trimmedPath = cachePath.trim();
+
+    if (!trimmedPath) {
       throw new Error('Cache path must be a non-empty string');
     }
 
     // Check for null bytes which can be used for injection
-    if (cachePath.includes('\0')) {
+    if (trimmedPath.includes('\0')) {
       throw new Error('Cache path contains invalid characters');
     }
 
     // Normalize and resolve to absolute path
-    const normalized = path.resolve(cachePath);
+    const normalized = path.resolve(trimmedPath);
 
     // Resolve symlinks to get the real path
     let realPath;
