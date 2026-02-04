@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import Models from './pages/Models';
 import Benchmarks from './pages/Benchmarks';
 import Results from './pages/Results';
+import Cache from './pages/Cache';
 import Settings from './pages/Settings';
 
 function Navigation() {
@@ -28,6 +29,9 @@ function Navigation() {
       <Link to="/results" className={`nav-link ${isActive('/results')}`}>
         Results
       </Link>
+      <Link to="/cache" className={`nav-link ${isActive('/cache')}`}>
+        Cache
+      </Link>
       <Link to="/settings" className={`nav-link ${isActive('/settings')}`}>
         Settings
       </Link>
@@ -51,6 +55,7 @@ function App() {
               <Route path="/models" element={<Models />} />
               <Route path="/benchmarks" element={<Benchmarks />} />
               <Route path="/results" element={<Results />} />
+              <Route path="/cache" element={<Cache />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </main>

@@ -42,4 +42,20 @@ export const systemAPI = {
   stats: () => api.get('/system/stats')
 };
 
+// Cache API
+export const cacheAPI = {
+  getLocation: async () => {
+    const response = await api.get('/cache/location');
+    return response.data;
+  },
+  switchCache: async (path) => {
+    const response = await api.post('/cache/switch', { path });
+    return response.data;
+  },
+  listModels: async () => {
+    const response = await api.get('/cache/models');
+    return response.data;
+  }
+};
+
 export default api;

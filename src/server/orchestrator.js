@@ -1,7 +1,12 @@
 import { FoundryLocalManager } from 'foundry-local-sdk';
 import OpenAI from 'openai';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import logger, { createServiceLogger } from './logger.js';
 import storage from './storage.js';
+import cacheManager from './cacheManager.js';
+
+const execFilePromise = promisify(execFile);
 
 class FoundryLocalOrchestrator {
   constructor() {
@@ -74,39 +79,84 @@ class FoundryLocalOrchestrator {
   }
 
   /**
-   * List available models from catalog
+   * List available models from catalog and cache
    */
   async listAvailableModels() {
     await this.initialize();
-    
+
     try {
-      const models = await this.manager.listCatalogModels();
-      logger.info('Catalog models fetched', { count: models.length });
-      
-      // Transform to expected format
-      return models.map(m => ({
-        id: m.id,
-        alias: m.alias,
-        description: `${m.alias} (${m.deviceType})`,
-        version: m.version,
-        deviceType: m.deviceType,
-        executionProvider: m.executionProvider,
-        modelSize: m.modelSize
-      }));
-      
+      // Get catalog models from SDK
+      const catalogModels = await this.manager.listCatalogModels();
+      logger.info('Catalog models fetched', { count: catalogModels.length });
+
+      // Get models from current cache
+      const cacheModels = await cacheManager.listCacheModels();
+      logger.info('Cache models fetched', { count: cacheModels.length });
+
+      // Merge and mark custom models
+      const mergedModels = this.mergeCatalogAndCache(catalogModels, cacheModels);
+
+      logger.info('Models merged', {
+        catalog: catalogModels.length,
+        cache: cacheModels.length,
+        total: mergedModels.length
+      });
+
+      return mergedModels;
+
     } catch (error) {
-      logger.error('Failed to list catalog models', { error: error.message });
-      
+      logger.error('Failed to list models', { error: error.message });
+
       // Return fallback list
       logger.warn('Returning fallback model list');
       return [
-        { id: 'phi-3.5-mini', alias: 'phi-3.5-mini', description: 'Phi-3.5 Mini' },
-        { id: 'phi-4-mini', alias: 'phi-4-mini', description: 'Phi-4 Mini' },
-        { id: 'qwen2.5-0.5b', alias: 'qwen2.5-0.5b', description: 'Qwen 2.5 0.5B' },
-        { id: 'llama-3.2-1b', alias: 'llama-3.2-1b', description: 'Llama 3.2 1B' },
-        { id: 'llama-3.2-3b', alias: 'llama-3.2-3b', description: 'Llama 3.2 3B' }
+        { id: 'phi-3.5-mini', alias: 'phi-3.5-mini', description: 'Phi-3.5 Mini', isCustom: false },
+        { id: 'phi-4-mini', alias: 'phi-4-mini', description: 'Phi-4 Mini', isCustom: false },
+        { id: 'qwen2.5-0.5b', alias: 'qwen2.5-0.5b', description: 'Qwen 2.5 0.5B', isCustom: false },
+        { id: 'llama-3.2-1b', alias: 'llama-3.2-1b', description: 'Llama 3.2 1B', isCustom: false },
+        { id: 'llama-3.2-3b', alias: 'llama-3.2-3b', description: 'Llama 3.2 3B', isCustom: false }
       ];
     }
+  }
+
+  /**
+   * Merge catalog and cache models, marking custom models
+   */
+  mergeCatalogAndCache(catalogModels, cacheModels) {
+    // Transform catalog models
+    const transformed = catalogModels.map(m => ({
+      id: m.id,
+      alias: m.alias,
+      description: `${m.alias} (${m.deviceType})`,
+      version: m.version,
+      deviceType: m.deviceType,
+      executionProvider: m.executionProvider,
+      modelSize: m.modelSize,
+      isCustom: false
+    }));
+
+    // Create a set of catalog model IDs for quick lookup
+    const catalogIds = new Set(catalogModels.map(m => m.id));
+    const catalogAliases = new Set(catalogModels.map(m => m.alias));
+
+    // Add cache models that aren't in the catalog (custom models)
+    for (const cacheModel of cacheModels) {
+      // Check if this model is not in the catalog
+      const isCustom = !catalogIds.has(cacheModel.id) && !catalogAliases.has(cacheModel.alias);
+
+      if (isCustom) {
+        // This is a custom model - add it to the list
+        transformed.push({
+          id: cacheModel.id,
+          alias: cacheModel.alias,
+          description: cacheModel.description || cacheModel.alias,
+          source: 'cache',
+          isCustom: true
+        });
+      }
+    }
+
+    return transformed;
   }
 
   /**
@@ -275,6 +325,76 @@ class FoundryLocalOrchestrator {
           });
           
           return modelInfo;
+        } else if (loadError.message && loadError.message.includes('not found')) {
+          // Model not in catalog - try CLI fallback for custom models
+          serviceLogger.info('Model not in catalog, trying CLI fallback for custom model', { alias, ttl });
+          
+          try {
+            // Validate alias to avoid command injection and path traversal
+            // Pattern allows alphanumeric, underscore, dot at start; must not start with '-' to prevent CLI flag injection
+            const aliasPattern = /^[A-Za-z0-9_.][A-Za-z0-9_.:+-]*$/;
+            if (!aliasPattern.test(alias)) {
+              throw new Error('Invalid model alias for CLI - must start with alphanumeric, underscore, or dot, and contain only alphanumeric, dash, underscore, dot, colon, and plus characters');
+            }
+
+            // Additional check: no double dashes which could be interpreted as CLI flags
+            if (alias.includes('--')) {
+              throw new Error('Invalid model alias format - double dashes not allowed');
+            }
+
+            // Prevent path separators
+            if (alias.includes('/') || alias.includes('\\')) {
+              throw new Error('Invalid model alias format - path separators not allowed');
+            }
+
+            serviceLogger.info('Loading custom model via CLI', { alias, ttl });
+
+            const { stdout, stderr } = await execFilePromise(
+              'foundry',
+              ['model', 'load', alias, '--ttl', String(ttl)]
+            );
+
+            if (stderr && !stderr.includes('Service is Started')) {
+              serviceLogger.warn('CLI load stderr', { stderr });
+            }
+
+            serviceLogger.info('Custom model loaded via CLI', { alias, stdout });
+
+            // Create a basic model info object since CLI doesn't return full details
+            const modelInfo = {
+              id: alias,
+              alias: alias,
+              version: 'unknown',
+              deviceType: 'unknown',
+              executionProvider: 'unknown',
+              modelSize: 'unknown'
+            };
+
+            // Store model info in cache
+            this.loadedModels.set(modelId, modelInfo);
+
+            // Update existing model in storage
+            const model = storage.getModel(modelId);
+            if (model) {
+              const updatedModel = {
+                ...model,
+                status: 'running',
+                endpoint: this.manager.endpoint,
+                foundry_id: modelInfo.id,
+                foundry_alias: modelInfo.alias,
+                last_error: null,
+                last_heartbeat: Date.now(),
+                updated_at: Date.now()
+              };
+              storage.saveModel(updatedModel);
+            }
+
+            return modelInfo;
+
+          } catch (cliError) {
+            serviceLogger.error('CLI fallback failed', { error: cliError.message });
+            throw new Error(`Failed to load custom model via CLI: ${cliError.message}`);
+          }
         } else {
           // Different error, rethrow
           throw loadError;
