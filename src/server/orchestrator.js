@@ -331,7 +331,7 @@ class FoundryLocalOrchestrator {
           
           try {
             // Validate alias to avoid command injection and path traversal
-            // Allow alphanumeric, underscore, dots, colons, and dashes (but not at start to prevent flag injection)
+            // Pattern allows alphanumeric, underscore, dot at start; must not start with '-' to prevent CLI flag injection
             const aliasPattern = /^[A-Za-z0-9_.][A-Za-z0-9_.:+-]*$/;
             if (!aliasPattern.test(alias)) {
               throw new Error('Invalid model alias for CLI - must start with alphanumeric, underscore, or dot, and contain only alphanumeric, dash, underscore, dot, colon, and plus characters');
