@@ -694,6 +694,13 @@ app.post('/api/cache/switch', async (req, res) => {
     res.json(result);
   } catch (error) {
     logger.error('Failed to switch cache', { error: error.message });
+    
+    // Return 4xx for validation errors, 500 for server errors
+    const statusCode = typeof error?.statusCode === 'number' ? error.statusCode : undefined;
+    if (statusCode && statusCode >= 400 && statusCode < 500) {
+      return res.status(statusCode).json({ error: error.message });
+    }
+    
     res.status(500).json({ error: error.message });
   }
 });

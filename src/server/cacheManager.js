@@ -116,11 +116,16 @@ class CacheManager {
     try {
       let targetPath = cachePath;
 
+      // Capture default cache path BEFORE switching (if not already captured)
+      if (!this.defaultCachePath) {
+        const currentLocation = await this.getCurrentLocation();
+        // Don't call getCurrentLocation again - it's already captured
+      }
+
       // Handle "default" keyword
       if (targetPath === 'default') {
         if (!this.defaultCachePath) {
-          // Try to get it first
-          await this.getCurrentLocation();
+          throw new Error('Default cache path not available');
         }
         targetPath = this.defaultCachePath;
       }
@@ -137,8 +142,10 @@ class CacheManager {
         logger.warn('Cache switch command stderr', { stderr });
       }
 
-      // Verify the switch worked
-      const newLocation = await this.getCurrentLocation();
+      // Get the new location WITHOUT updating defaultCachePath
+      const { stdout } = await execFilePromise('foundry', ['cache', 'location']);
+      const match = stdout.match(/Cache directory path:\s*(.+)/);
+      const newLocation = match && match[1] ? match[1].trim() : normalizedPath;
 
       logger.info('Cache directory switched', {
         requested: normalizedPath,
@@ -153,6 +160,16 @@ class CacheManager {
 
     } catch (error) {
       logger.error('Failed to switch cache', { cachePath, error: error.message });
+      
+      // Mark validation errors with statusCode for proper HTTP response
+      if (error.message.includes('Cache path') || 
+          error.message.includes('system directories') ||
+          error.message.includes('invalid characters')) {
+        const validationError = new Error(error.message);
+        validationError.statusCode = 400;
+        throw validationError;
+      }
+      
       throw new Error(`Failed to switch cache: ${error.message}`);
     }
   }
