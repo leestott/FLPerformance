@@ -74,9 +74,11 @@ class CacheManager {
       /^\/proc($|\/)/i,
       /^\/root($|\/)/i,
       /^\/var\/root($|\/)/i,
+      /^\/bin($|\/)/i,
+      /^\/sbin($|\/)/i,
       /^C:\\Windows($|\\)/i,
       /^C:\\Program Files($|\\)/i,
-      /^C:\\System32($|\\)/i
+      /^C:\\Program Files \(x86\)($|\\)/i
     ];
 
     for (const pattern of sensitivePatterns) {

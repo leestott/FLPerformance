@@ -331,15 +331,15 @@ class FoundryLocalOrchestrator {
           
           try {
             // Validate alias to avoid command injection and path traversal
-            // Only allow alphanumeric, underscore, and single dashes (not dots to prevent path traversal)
-            const aliasPattern = /^[A-Za-z0-9_-]+$/;
+            // Only allow alphanumeric, underscore, and dashes in the middle (not at start)
+            const aliasPattern = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/;
             if (!aliasPattern.test(alias)) {
-              throw new Error('Invalid model alias for CLI - use only alphanumeric, dash, and underscore characters');
+              throw new Error('Invalid model alias for CLI - must start with alphanumeric or underscore, and contain only alphanumeric, dash, and underscore characters');
             }
 
-            // Additional check: no double dashes or leading/trailing dashes
-            if (alias.startsWith('-') || alias.endsWith('-') || alias.includes('--')) {
-              throw new Error('Invalid model alias format');
+            // Additional check: no double dashes which could be interpreted as CLI flags
+            if (alias.includes('--')) {
+              throw new Error('Invalid model alias format - double dashes not allowed');
             }
 
             serviceLogger.info('Loading custom model via CLI', { alias, ttl });
