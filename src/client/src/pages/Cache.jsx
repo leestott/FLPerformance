@@ -190,23 +190,21 @@ function Cache() {
             <button
               onClick={handleSwitchToCustom}
               disabled={loading || !customPath.trim()}
-              className="button"
+              className="btn btn-primary"
             >
               {loading ? 'Switching...' : 'Switch to Custom'}
             </button>
             <button
               onClick={handleRestoreDefault}
               disabled={loading || isDefault}
-              className="button"
-              style={{ backgroundColor: '#757575' }}
+              className="btn btn-secondary"
             >
               {loading ? 'Restoring...' : 'Restore Default'}
             </button>
             <button
               onClick={loadCacheInfo}
               disabled={loading}
-              className="button"
-              style={{ backgroundColor: '#4caf50' }}
+              className="btn btn-success"
             >
               Refresh
             </button>
