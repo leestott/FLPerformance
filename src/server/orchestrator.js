@@ -330,10 +330,16 @@ class FoundryLocalOrchestrator {
           serviceLogger.info('Model not in catalog, trying CLI fallback for custom model', { alias, ttl });
           
           try {
-            // Validate alias to avoid command injection
-            const aliasPattern = /^[A-Za-z0-9._-]+$/;
+            // Validate alias to avoid command injection and path traversal
+            // Only allow alphanumeric, underscore, and single dashes (not dots to prevent path traversal)
+            const aliasPattern = /^[A-Za-z0-9_-]+$/;
             if (!aliasPattern.test(alias)) {
-              throw new Error('Invalid model alias for CLI - use only alphanumeric, dot, dash, and underscore characters');
+              throw new Error('Invalid model alias for CLI - use only alphanumeric, dash, and underscore characters');
+            }
+
+            // Additional check: no double dashes or leading/trailing dashes
+            if (alias.startsWith('-') || alias.endsWith('-') || alias.includes('--')) {
+              throw new Error('Invalid model alias format');
             }
 
             serviceLogger.info('Loading custom model via CLI', { alias, ttl });

@@ -52,7 +52,7 @@ class CacheManager {
   }
 
   /**
-   * Validate cache path to prevent command injection
+   * Validate cache path to prevent command injection and path traversal
    */
   validateCachePath(cachePath) {
     if (!cachePath || typeof cachePath !== 'string') {
@@ -66,6 +66,25 @@ class CacheManager {
 
     // Normalize and resolve to absolute path
     const normalized = path.resolve(cachePath);
+
+    // Additional security: prevent access to sensitive system directories
+    const sensitivePatterns = [
+      /^\/etc($|\/)/i,
+      /^\/sys($|\/)/i,
+      /^\/proc($|\/)/i,
+      /^\/root($|\/)/i,
+      /^\/var\/root($|\/)/i,
+      /^C:\\Windows($|\\)/i,
+      /^C:\\Program Files($|\\)/i,
+      /^C:\\System32($|\\)/i
+    ];
+
+    for (const pattern of sensitivePatterns) {
+      if (pattern.test(normalized)) {
+        throw new Error('Cache path cannot point to system directories');
+      }
+    }
+
     return normalized;
   }
 
