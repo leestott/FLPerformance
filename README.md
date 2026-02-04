@@ -134,7 +134,9 @@ You'll see:
 
 ---
 
-### Alternative: Manual Installation
+## Alternative: Manual Installation
+
+If the automated installation script doesn't work, follow these manual steps:
 
 ### Required Software
 
@@ -155,13 +157,12 @@ You'll see:
    - GPU with CUDA support (optional but recommended)
    - Adequate disk space for model storage (varies by model, typically 5-50GB per model)
 
-### Alternative: Manual Installation
+### Installation Steps
 
-If the automated script doesn't work:
+#### 1. Install Dependencies
 
-### 1. Install Dependencies
-
-```bash (skip optional SQLite)
+```bash
+# Skip optional SQLite (requires build tools)
 npm install --no-optional
 
 # Install frontend dependencies
@@ -185,11 +186,10 @@ npm install
 mkdir results
 ```
 
-### 2. Start the Application
+#### 2. Start the Application
 
 ```bash
 # Development mode (with hot reload)
-```bash
 npm run dev
 ```
 

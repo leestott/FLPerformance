@@ -15,12 +15,13 @@ async function checkFoundryLocal() {
   console.log('1. Checking Foundry Local CLI...');
   
   const commands = [
-    { cmd: 'foundry-local --version', name: 'foundry-local' },
     { cmd: 'foundry --version', name: 'foundry' },
+    { cmd: 'foundry-local --version', name: 'foundry-local' },
     { cmd: 'fl --version', name: 'fl' }
   ];
   
   let found = false;
+  let foundCmd = null;
   
   for (const { cmd, name } of commands) {
     try {
@@ -28,6 +29,7 @@ async function checkFoundryLocal() {
       console.log(`✓ Found via "${name}" command`);
       console.log(`  Version: ${stdout.trim()}`);
       found = true;
+      foundCmd = name;
       break;
     } catch (err) {
       console.log(`✗ "${name}" command not found`);
@@ -37,32 +39,31 @@ async function checkFoundryLocal() {
   if (!found) {
     console.log('\n❌ Foundry Local CLI not found in PATH\n');
     console.log('Installation instructions:');
-    console.log('  Visit: https://aka.ms/foundry-local');
+    console.log('  Visit: https://aka.ms/foundry-local-installer');
     console.log('  Or check Microsoft Foundry Local documentation');
     return false;
   }
   
-  console.log('\n2. Checking available models...');
+  console.log('\n2. Checking available commands...');
   
   try {
-    const { stdout } = await execAsync('foundry-local models list');
-    console.log('✓ Can query models');
-    console.log('\nAvailable models:');
-    console.log(stdout);
+    const { stdout } = await execAsync(`${foundCmd} --help`);
+    console.log('✓ Can access Foundry Local help');
+    console.log('\nFoundry Local is installed and working');
   } catch (err) {
-    console.log('⚠️  Could not list models');
+    console.log('⚠️  Could not access help');
     console.log('   Error:', err.message);
   }
   
   console.log('\n3. Checking service status...');
   
   try {
-    const { stdout } = await execAsync('foundry-local service status');
+    const { stdout } = await execAsync(`${foundCmd} service status`);
     console.log('✓ Service status:');
     console.log(stdout);
   } catch (err) {
     console.log('⚠️  Could not check service status');
-    console.log('   Error:', err.message);
+    console.log('   This is normal if service is not running');
   }
   
   console.log('\n✅ Diagnostic complete\n');

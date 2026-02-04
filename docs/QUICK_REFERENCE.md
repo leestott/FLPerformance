@@ -170,7 +170,16 @@ const client2 = new OpenAI({ baseURL: 'http://localhost:8081' });
 | `/api/models/:id/load` | POST | Load specific model |
 | `/api/models/:id/stop` | POST | Unload specific model |
 | `/api/models/:id/health` | GET | Model health check |
+| `/api/models/:id/test` | POST | Test model inference (pre-benchmark validation) |
 | `/api/inference/test` | POST | Test inference request |
+| `/api/benchmarks/run` | POST | Start a benchmark run|
+| `/api/benchmarks/runs` | GET | List all benchmark runs |
+| `/api/benchmarks/runs/:id/status` | GET | Get benchmark run status |
+| `/api/benchmarks/runs/:id/export/json` | GET | Export results as JSON |
+| `/api/benchmarks/runs/:id/export/csv` | GET | Export results as CSV |
+| `/api/cache/path` | GET | Get current cache directory |
+| `/api/cache/path` | POST | Set custom cache directory |
+| `/api/cache/models` | GET | List models in current cache |
 | `/api/shutdown` | POST | Graceful shutdown |
 
 ---

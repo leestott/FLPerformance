@@ -136,6 +136,11 @@ This checklist helps verify the SDK integration is working correctly after migra
 
 ### Test 3: Load a Small Model
 
+- [ ] **Pre-test Validation**
+  - Load a model in the UI
+  - Click "Test" button
+  - Expected: Quick test response completes successfully with sample output
+
 - [ ] **Load Phi-3 Mini (API)**
   ```bash
   curl -X POST http://localhost:3001/api/models/microsoft/phi-3-mini-4k-instruct/load
@@ -401,9 +406,71 @@ This checklist helps verify the SDK integration is working correctly after migra
   - Verify all checks pass
   - Expected: SDK integration test succeeds
 
+## UI Feature Tests
+
+### Test 22: Dashboard Functionality
+
+- [ ] **Dashboard Metrics**
+  - Navigate to Dashboard tab
+  - Verify displays: Total Models, Running Services, Total Benchmark Runs
+  - Expected: Accurate counts from system state
+
+- [ ] **Recent Benchmark Display**
+  - Check last benchmark run details
+  - Expected: Shows most recent run with status, models, and timestamp
+
+- [ ] **Quick Actions**
+  - Verify "Manage Models", "Run Benchmark", "View Results" buttons work
+  - Expected: Navigate to correct tabs
+
+### Test 23: Results Visualization
+
+- [ ] **Performance Score Cards**
+  - Complete a benchmark with 2+ models
+  - Navigate to Results tab
+  - Expected: Shows 0-100 score cards for each model
+
+- [ ] **"Best Model For..." Cards**
+  - Check recommendation cards
+  - Expected: Shows best model for throughput, latency, reliability, TTFT
+
+- [ ] **Comparison Charts**
+  - Verify all charts render: TPS, Latency (P50/P95/P99), Generation Performance, Radar Chart
+  - Expected: Visual data matches detailed results table
+
+- [ ] **Export Functionality**
+  - Click "Export JSON" and "Export CSV"
+  - Expected: Downloads results in both formats
+
+### Test 24: Cache Management
+
+- [ ] **View Current Cache**
+  - Navigate to Cache tab
+  - Expected: Shows current cache path and models found
+
+- [ ] **Switch Custom Cache Directory**
+  - Enter custom path with ONNX models
+  - Click "Switch to Custom"
+  - Expected: Refreshes model list, custom models show with 🔧 badge
+
+- [ ] **Restore Default Cache**
+  - Click "Restore Default"
+  - Expected: Returns to default Foundry Local cache
+
+### Test 25: Pre-test Validation
+
+- [ ] **Model Test Button**
+  - Load a model
+  - Click "Test" button
+  - Expected: Quick inference test completes with sample output
+
+- [ ] **Test Before Benchmark**
+  - Test model before running full benchmark
+  - Expected: Catches model issues before expensive benchmark run
+
 ## Regression Tests
 
-### Test 22: Verify Breaking Changes
+### Test 26: Verify Breaking Changes
 
 - [ ] **Port Allocation**
   - Confirm single service on one port (8080)
@@ -419,7 +486,7 @@ This checklist helps verify the SDK integration is working correctly after migra
 
 ## Documentation Tests
 
-### Test 23: Documentation Accuracy
+### Test 27: Documentation Accuracy
 
 - [ ] **Quick Start Guide**
   - Follow ../QUICK_START.md
@@ -446,7 +513,7 @@ This checklist helps verify the SDK integration is working correctly after migra
 
 ### Test Summary
 
-- Total Tests: 23
+- Total Tests: 27
 - Passed: _____
 - Failed: _____
 - Skipped: _____
