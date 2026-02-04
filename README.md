@@ -12,9 +12,12 @@ A local application with UI for benchmarking multiple Models (SLMs) running via 
 - **Complete Benchmark System**: Full end-to-end benchmarking with accurate metrics
 - **Enhanced Visualizations**: Performance cards, comparison charts, and radar graphs
 - **Real-time Progress**: Polling-based status updates every 2 seconds during runs
+- **Pre-test Validation**: Test button to verify model inference before benchmarking
 - **Results Export**: JSON and CSV export functionality
 - **Hardware Detection**: Comprehensive system information capture
 - **Storage System**: JSON-based storage with optional SQLite support
+- **Custom Cache Support**: Switch between model cache directories via Cache tab
+- **Multi-Model Comparison**: Side-by-side performance analysis with visual insights
 
 ## Overview
 
@@ -24,6 +27,18 @@ FLPerformance Foundry Local Performance enables you to:
 - Run standardized benchmark tests across models
 - Display clear performance statistics with tables and charts
 - Export results for analysis
+
+![Dashboard Overview](docs/images/dashboard.png)
+*Dashboard showing system status, benchmark run history, and quick actions*
+
+![Models Management](docs/images/models-page.png)
+*Models page for loading, testing, and managing AI models*
+
+![Benchmark Configuration](docs/images/benchmarks-page.png)
+*Benchmarks page with suite selection, model selection, and configuration*
+
+![Results Visualization](docs/images/results.png)
+*Comprehensive results with performance scores, comparison charts, and detailed metrics*
 
 ## Quick Start
 
@@ -262,14 +277,22 @@ FLPerformance/
 - **Throughput (TPS)**: Tokens generated per second (overall)
 - **Latency**: Time to first token (TTFT), time per output token (TPOT), and end-to-end completion time
 - **Generation Speed (GenTPS)**: Token generation rate after first token (1000/TPOT)
+- **Percentile Metrics**: P50, P95, and P99 latency measurements for reliability analysis
+- **Performance Scoring**: 0-100 score based on throughput, latency, and reliability
 - **Stability**: Error rate and timeout tracking
 - **Resource Usage**: CPU, RAM, and GPU utilization (platform-dependent)
 
 ### Results & Comparison
-- Side-by-side model comparison tables
-- Interactive charts for TPS, latency distributions (p50/p95/p99), error rates
-- "Best model for..." recommendations based on metrics
-- Export results as JSON or CSV
+- **Performance Score Cards**: Visual 0-100 ratings for each model
+- **"Best Model For..." Cards**: Automatic recommendations for throughput, latency, reliability, and TTFT
+- **Side-by-side Comparison Table**: Detailed metrics with color-coded scores
+- **Interactive Charts**: 
+  - Throughput comparison (TPS)
+  - Latency comparison (P50/P95/P99)
+  - Generation performance (TTFT, TPOT, GenTPS)
+  - Performance radar chart showing multidimensional analysis
+- **Detailed Results Table**: Per-scenario breakdowns with all metrics
+- **Export Options**: JSON and CSV export for further analysis
 
 ## Configuration
 

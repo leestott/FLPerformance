@@ -18,12 +18,14 @@ FLPerformance is a full-stack web application that benchmarks Large Language Mod
 
 ### Key Features
 
-- **🎯 Comprehensive Metrics**: TPS, TTFT, latency percentiles (P50/P95/P99), error rates, and resource utilization
-- **📊 Beautiful Visualizations**: Performance scores, comparison charts, radar graphs showing model strengths
-- **⚡ Real-time Progress**: Watch your benchmarks execute with live status updates
-- **🔬 Pre-test Validation**: Test models before running full benchmarks to catch issues early
-- **📁 Export Results**: JSON and CSV exports for deeper analysis
-- **🚀 Zero Setup Benchmarks**: Pre-configured test suites ready to run
+- **🎯 Comprehensive Metrics**: TPS, TTFT, TPOT, GenTPS, latency percentiles (P50/P95/P99), error rates, and resource utilization
+- **📊 Beautiful Visualizations**: Performance score cards (0-100), comparison charts, radar graphs, and "Best Model For..." recommendations
+- **⚡ Real-time Progress**: Watch your benchmarks execute with live status updates every 2 seconds
+- **🔬 Pre-test Validation**: Test button validates model inference before running full benchmarks
+- **📁 Export Results**: JSON and CSV exports for deeper analysis and sharing
+- **🚀 Zero Setup Benchmarks**: Pre-configured test suites covering Q&A, reasoning, code generation, and more
+- **🔄 Custom Cache Support**: Switch between model directories to test custom ONNX models
+- **📈 Multi-Model Comparison**: Side-by-side analysis with automatic performance insights
 
 ### Architecture
 
@@ -41,6 +43,15 @@ Clean separation of concerns, all running locally on your machine.
 
 ![FLPerformance Dashboard](docs/images/dashboard.png)
 *The FLPerformance dashboard showing system metrics, recent benchmark runs, and quick actions*
+
+![Models Management](docs/images/models-page.png)
+*Models page showing configured models with status indicators, endpoints, and action buttons for testing, loading, and management*
+
+![Benchmark Configuration](docs/images/benchmarks-page.png)
+*Benchmarks page displaying recent runs, status tracking, and configuration options for new benchmark tests*
+
+![Results Visualization](docs/images/results.png)
+*Comprehensive results page with performance scores, comparison charts, radar visualization, and detailed per-scenario metrics*
 
 ## Why Foundry Local?
 
@@ -106,9 +117,6 @@ Navigate to the **Models** tab:
 - Click "Load" (first time downloads the model)
 - Status turns green when ready
 
-![Models Management](docs/images/models.png)
-*The Models page showing configured models with their status, endpoints, and action buttons*
-
 **Pro tip**: Click the "Test" button to verify the model responds before benchmarking.
 
 ### 2. Configure Your Benchmark
@@ -130,9 +138,6 @@ Go to **Benchmarks** tab:
 ```
 
 Select your loaded model(s) and hit "Run Benchmark".
-
-![Benchmark Configuration](docs/images/benchmarks.png)
-*The Benchmarks page with suite selection, model selection, and configuration options*
 
 ### 3. Analyze Results
 
@@ -157,19 +162,24 @@ Score = (TPS/100)*40 + (40 - P95/100)*40 + (100 - ErrorRate)*20
 ![Results Visualizations](docs/images/results.png)
 *Comprehensive results page with performance scores, comparison charts, radar visualization, and detailed metrics*
 
-## Real-World Example: Choosing Between Model Sizes
 
-We ran `qwen2.5-coder` in three sizes on a machine with 32GB RAM and RTX 3080:
+| Model | Size | TPS | P95 Latency | Error Rate | Score |
+|-------|------|-----|-------------|------------|-------|
+| qwen2.5-coder-0.5b | 528 MB | 7.61 | 920ms | 0% | 63/100 |
+| phi-4 | 8.5 GB | 0.24 | 29,181ms | 0% | 30/100 |
+| qwen2.5-7b | 7 GB | - | - | 100% | Failed to load |
 
-| Model | TPS | P95 Latency | Error Rate | Score |
-|-------|-----|-------------|------------|-------|
-| 0.5B  | 45.2 | 890ms | 0% | 87/100 |
-| 1.5B  | 28.1 | 1450ms | 0% | 71/100 |
-| 7B    | 8.3 | 4200ms | 12% | 38/100 |
+**Key Insights**:
 
-**Insight**: For our use case (code completion snippets), the 0.5B model was 5x faster than the 7B model with comparable quality. The 7B model also hit memory limits causing errors.
+1. **Hardware Matters**: The phi-4 model (8.5GB) exceeded available VRAM (2GB), causing massive slowdowns as it swapped to system RAM. Time to first token: **15 seconds**!
 
-**Without benchmarking**, we would have defaulted to "bigger is better" and shipped a 5x slower experience.
+2. **31x Performance Gap**: qwen2.5-coder-0.5b delivered 7.61 TPS vs phi-4's 0.24 TPS - purely due to model size vs available VRAM.
+
+3. **Model Loading Limits**: qwen2.5-7b failed completely due to insufficient resources, highlighting the importance of testing on target hardware.
+
+**Without benchmarking**, we might have deployed phi-4 thinking "bigger = better", resulting in 30-second wait times for users. FLPerformance revealed the hardware mismatch immediately, saving us from shipping unusable performance.
+
+**Lesson**: Always benchmark on hardware that matches your deployment target. A model that works fine on a desktop GPU might be unusable on integrated graphics.
 
 ## Under the Hood: The Model Identifier Fix
 
